@@ -1,0 +1,40 @@
+{
+  "kind": "train",
+  "pipeline": {
+    "task": {"type": "classification.single_label"},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {"format": "synthetic", "num_samples": 400, "image_size": 32, "num_classes": 4}},
+      {"id": "tf", "type": "transforms", "params": {"preset": "basic"}},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "graph",
+        "input": {"shape": [3, 32, 32]},
+        "nodes": [
+          {"id": "c1", "op": "Conv2d", "params": {"out_channels": 32}},
+          {"id": "bn1", "op": "BatchNorm2d"},
+          {"id": "a1", "op": "ReLU"},
+          {"id": "c2", "op": "Conv2d", "params": {"out_channels": 32}},
+          {"id": "bn2", "op": "BatchNorm2d"},
+          {"id": "add", "op": "Add"},
+          {"id": "a2", "op": "ReLU"},
+          {"id": "pool", "op": "MaxPool2d"},
+          {"id": "block", "op": "BasicBlock", "params": {"out_channels": 64, "stride": 2}},
+          {"id": "gap", "op": "GlobalAvgPool"},
+          {"id": "drop", "op": "Dropout", "params": {"p": 0.2}},
+          {"id": "fc", "op": "Linear", "params": {"out_features": "$num_outputs"}}
+        ],
+        "edges": [
+          ["input", "c1"], ["c1", "bn1"], ["bn1", "a1"], ["a1", "c2"], ["c2", "bn2"], ["bn2", "add"],
+          ["a1", "add"], ["add", "a2"], ["a2", "pool"], ["pool", "block"], ["block", "gap"],
+          ["gap", "drop"], ["drop", "fc"]
+        ]
+      }}},
+      {"id": "train", "type": "trainer", "params": {
+        "epochs": 4, "batch_size": 32, "num_workers": 2,
+        "optimizer": {"name": "adamw", "lr": 0.003, "weight_decay": 0.01},
+        "scheduler": {"name": "cosine", "warmup_epochs": 1},
+        "early_stopping": {"patience": 3}
+      }}
+    ],
+    "edges": [["data", "tf"], ["tf", "model"], ["model", "train"]]
+  }
+}

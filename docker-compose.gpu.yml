@@ -4,6 +4,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 services:
   worker:
+    environment:
+      WORKER_TIERS: cpu,gpu
     deploy:
       resources:
         reservations:

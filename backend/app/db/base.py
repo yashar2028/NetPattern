@@ -16,4 +16,4 @@ class Base(DeclarativeBase):
 
 
 # Import models here so Alembic metadata autogeneration sees all tables.
-# (No tables yet: the first models arrive in Phase 2.)
+from app.models import job as job_models  # noqa: F401, E402

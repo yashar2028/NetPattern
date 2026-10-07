@@ -4,25 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netpattern-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "NetPattern training engine. Runs only inside Nix-pinned sandboxes."
 authors = [
     {name = "Yashar Najafi", email = "yasharnajafi2028@gmail.com"}
 ]
 requires-python = ">=3.12"
-# Versions are not pinned here on purpose: the sandbox environment (backend/flake.nix
+# Versions are not pinned here on purpose: the sandbox environment (engine/flake.nix
 # + flake.lock) provides and pins every dependency.
 dependencies = [
     "pydantic>=2",
     "numpy",
     "pillow",
-    "pydicom",
-    "nibabel",
+    "safetensors",
     "torch",
     "torchvision",
     "timm",
     "torchmetrics",
 ]
+
+# Capability packs (PLAN D23), added to a sandbox automatically when a pipeline needs them.
+[project.optional-dependencies]
+medical = ["pydicom", "nibabel"]
+detection = ["pycocotools"]
 
 [project.scripts]
 netpattern-runtime = "netpattern_engine.runtime:main"
@@ -42,6 +46,9 @@ known_first_party = ["netpattern_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# No cache directory: the engine folder is a Nix flake, so stray files would change its hash.
+addopts = "-p no:cacheprovider"
 markers = [
     "gpu: needs a CUDA GPU (run on the GPU laptop)",
+    "slow: trains real models for several epochs",
 ]

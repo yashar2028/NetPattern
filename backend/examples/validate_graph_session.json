@@ -1,0 +1,18 @@
+{
+  "task": {"type": "classification.single_label", "classes": ["cat", "dog", "bird"]},
+  "architecture": {
+    "kind": "graph",
+    "input": {"shape": [3, 64, 64]},
+    "nodes": [
+      {"id": "c1", "op": "Conv2d", "params": {"out_channels": 32}},
+      {"id": "a1", "op": "ReLU"},
+      {"id": "c2", "op": "Conv2d", "params": {"out_channels": 64}},
+      {"id": "add", "op": "Add"},
+      {"id": "gap", "op": "GlobalAvgPool"},
+      {"id": "fc", "op": "Linear", "params": {"out_features": "$num_outputs"}}
+    ],
+    "edges": [
+      ["input", "c1"], ["c1", "a1"], ["a1", "c2"], ["c2", "add"], ["a1", "add"], ["add", "gap"], ["gap", "fc"]
+    ]
+  }
+}

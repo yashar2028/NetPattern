@@ -56,11 +56,18 @@ services:
     environment:
       <<: *backend-environment
       WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-30}
+      # Hardware tiers this worker serves; the GPU override adds gpu.
+      WORKER_TIERS: ${WORKER_TIERS:-cpu}
+      # bwrap: each sandbox gets its own user/PID/network namespaces (works with
+      # Docker's default seccomp profile). Use "none" only to debug the engine.
+      SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-bwrap}
     volumes:
       - ./backend:/app
       - storage:/data
       # Pinned sandbox environments survive container rebuilds.
       - nix_store:/nix
+    # PyTorch data loaders share tensors through /dev/shm (Docker's default is 64 MB).
+    shm_size: 2gb
     # tini reaps sandbox child processes and forwards SIGTERM.
     init: true
     stop_grace_period: 30s

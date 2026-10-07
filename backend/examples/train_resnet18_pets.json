@@ -1,0 +1,29 @@
+{
+  "kind": "train",
+  "pipeline": {
+    "task": {"type": "classification.single_label"},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {"format": "csv", "root": "oxford-pets", "manifest": "manifest.csv"}},
+      {"id": "tf", "type": "transforms", "params": {
+        "preset": "from_weights",
+        "image_size": 160,
+        "train": [
+          {"op": "RandomHorizontalFlip", "params": {"p": 0.5}},
+          {"op": "ColorJitter", "params": {"brightness": 0.2, "contrast": 0.2}}
+        ]
+      }},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "pretrained",
+        "base": {"source": "torchvision", "name": "resnet18", "weights": "DEFAULT"}
+      }}},
+      {"id": "train", "type": "trainer", "params": {
+        "epochs": 4, "batch_size": 16, "num_workers": 2,
+        "optimizer": {"name": "adamw", "lr": 0.001, "weight_decay": 0.01, "backbone_lr_factor": 0.1},
+        "scheduler": {"name": "cosine"},
+        "early_stopping": {"patience": 3}
+      }},
+      {"id": "eval", "type": "evaluator", "params": {"splits": ["val", "test"]}}
+    ],
+    "edges": [["data", "tf"], ["tf", "model"], ["model", "train"], ["train", "eval"]]
+  }
+}

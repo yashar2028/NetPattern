@@ -1,0 +1,23 @@
+{
+  "kind": "sanity",
+  "options": {"steps": 60},
+  "pipeline": {
+    "task": {"type": "classification.single_label"},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {"format": "synthetic", "num_samples": 64, "image_size": 32}},
+      {"id": "tf", "type": "transforms", "params": {"preset": "basic"}},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "graph",
+        "input": {"shape": [3, 32, 32]},
+        "nodes": [
+          {"id": "c1", "op": "Conv2d", "params": {"out_channels": 16}},
+          {"id": "a1", "op": "ReLU"},
+          {"id": "gap", "op": "GlobalAvgPool"},
+          {"id": "fc", "op": "Linear", "params": {"out_features": "$num_outputs"}}
+        ],
+        "edges": [["input", "c1"], ["c1", "a1"], ["a1", "gap"], ["gap", "fc"]]
+      }}},
+      {"id": "train", "type": "trainer", "params": {"batch_size": 16, "num_workers": 0, "optimizer": {"lr": 0.01}}}
+    ]
+  }
+}
