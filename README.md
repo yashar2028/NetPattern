@@ -12,16 +12,18 @@ The blueprint, decisions and roadmap are in [PLAN.md](PLAN.md).
 
 - Frontend: React (JavaScript), Vite, React Router, Axios.
 - Backend: FastAPI, SQLAlchemy async, Alembic, PostgreSQL.
-- Worker: the same backend image, running sandbox processes in Nix-pinned environments.
-- Engine (`backend/engine`): the PyTorch training/serving engine. It runs **only** inside sandbox
-  environments built by `backend/flake.nix`.
+- Worker: the same backend image. It claims jobs from a PostgreSQL queue and runs them in
+  Nix-pinned environments, isolated with bubblewrap.
+- Engine (`backend/engine`): the PyTorch engine (datasets, models, layer graphs, training,
+  metrics). It runs **only** inside sandbox environments built from `backend/engine/flake.nix`.
 
 ## Repository layout
 
-`frontend/` contains the Vite app.
-`backend/` contains the API (`app/`), the worker (`app/workers`), the sandbox boundary
-(`app/sandbox`), migrations, the engine package (`engine/`) and the Nix flake (`flake.nix`).
-`docker-compose.yml` runs everything: db, backend, worker, frontend (three images).
+- `frontend/`: the Vite app.
+- `backend/app/`: the API, the worker (`workers/`), the sandbox boundary (`sandbox/`).
+- `backend/engine/`: the engine package and its flake (environment templates, capability packs).
+- `backend/examples/`: ready-to-run job requests.
+- `docker-compose.yml`: db, backend, worker, frontend (three images).
 
 ## Run
 
@@ -42,26 +44,65 @@ On a machine with an NVIDIA GPU:
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
-## Checks
-
-Run these while the stack is up:
+## Train something (Phase 1: worker CLI, the API comes in Phase 2)
 
 ```bash
-# Backend tests (including the real-database health check)
-docker compose exec backend pytest
+# Test data: an Oxford-IIIT Pet subset (classification, segmentation masks, head boxes)
+docker compose exec worker python -m app.datasets.samples oxford-pets
+# …and synthetic NIfTI volumes, written by a sandbox job
+docker compose exec worker python -m app.datasets.samples synthetic-nifti
 
-# Build the pinned CPU sandbox environment and run one engine job inside it.
-# The first run downloads several GB (PyTorch); afterwards it's cached in the nix_store volume.
-docker compose exec worker python -m app.sandbox.smoke
+# Submit a job and follow its live events
+docker compose exec worker python -m app.workers.cli submit examples/train_resnet18_pets.json --wait
+docker compose exec worker python -m app.workers.cli submit examples/train_unet_pets_segmentation.json --wait
+docker compose exec worker python -m app.workers.cli submit examples/train_fasterrcnn_pets_heads.json --wait
+docker compose exec worker python -m app.workers.cli submit examples/train_nifti_slices_2p5d.json --wait
+docker compose exec worker python -m app.workers.cli submit examples/train_custom_cnn_synthetic.json --wait
 
-# Engine tests inside the same pinned packages
-docker compose exec worker nix develop .#engine-dev --command pytest engine/tests
+# Other job kinds: sanity (overfit one batch), profile (dataset statistics)
+docker compose exec worker python -m app.workers.cli submit examples/sanity_custom_cnn_synthetic.json --wait
+docker compose exec worker python -m app.workers.cli submit examples/profile_pets.json --wait
 
-# Frontend lint
+# Manage jobs
+docker compose exec worker python -m app.workers.cli list
+docker compose exec worker python -m app.workers.cli status <job_id> --full
+docker compose exec worker python -m app.workers.cli cancel <job_id>
+
+# Editor features through a session process (shape inference, params, FLOPs, per-node issues)
+docker compose exec worker python -m app.workers.cli session validate_architecture \
+    --params-file examples/validate_graph_session.json
+```
+
+Each run writes `request.json`, `result.json`, `stderr.log` and `checkpoints/` to
+`/data/runs/<job_id>` in the storage volume. Every event is also stored in `job_events`.
+
+## Environments
+
+- **Templates:** `pytorch-cpu` and `pytorch-cuda12`.
+- **Capability packs** are added automatically when a pipeline needs them: `medical` for DICOM
+  and NIfTI data, `detection` for detection metrics.
+- Each environment gets its own generated `flake.nix` + `flake.lock` under `/data/envs/<id>`.
+
+```bash
+docker compose exec worker python -m app.workers.cli env --packs medical   # build or show one
+docker compose exec worker python -m app.workers.cli verify-env            # locks re-evaluate identically
+docker compose exec worker python -m app.sandbox.smoke                     # one engine job, no queue
+```
+
+Isolation is set by `SANDBOX_ISOLATION` in `.env`:
+- `bwrap` (the default): each sandbox runs as `nobody` in its own namespaces, with no network,
+  the Nix store and datasets read-only, and write access only to its run folder.
+- `none`: for debugging the engine only.
+
+## Checks
+
+```bash
+docker compose exec backend pytest                                   # API, queue, sandbox runner
+docker compose exec worker sh -c "cd engine && nix develop .#engine-dev --command pytest"
 docker compose exec frontend npm run lint
 ```
 
-The first `nix build` creates `backend/flake.lock`. Commit it: it is the pin.
+`backend/engine/flake.lock` pins nixpkgs for every environment. Commit it.
 
 ## Development notes
 
@@ -76,6 +117,9 @@ Create a migration:
 ```bash
 docker compose exec backend alembic revision --autogenerate -m "describe change"
 ```
+
+The worker does not auto-reload. After changing worker or sandbox code, run
+`docker compose restart worker`.
 
 If you run Nix from a git checkout outside Docker, Nix only sees files tracked by git. Run
 `git add` on new files before `nix build`.

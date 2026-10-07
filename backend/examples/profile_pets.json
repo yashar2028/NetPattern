@@ -1,0 +1,5 @@
+{
+  "kind": "profile",
+  "task": {"type": "classification.single_label"},
+  "dataset": {"format": "csv", "root": "oxford-pets", "manifest": "manifest.csv"}
+}

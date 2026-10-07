@@ -1,0 +1,32 @@
+{
+  "kind": "train",
+  "pipeline": {
+    "task": {"type": "detection.bbox"},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {
+        "format": "voc",
+        "root": "oxford-pets",
+        "annotations_dir": "annotations/xmls",
+        "images_dir": "images",
+        "split": {"strategy": "random"}
+      }},
+      {"id": "tf", "type": "transforms", "params": {
+        "train": [{"op": "RandomHorizontalFlip", "params": {"p": 0.5}}]
+      }},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "pretrained",
+        "base": {
+          "source": "torchvision",
+          "name": "fasterrcnn_mobilenet_v3_large_320_fpn",
+          "weights": "DEFAULT",
+          "options": {"min_size": 320, "max_size": 320}
+        }
+      }}},
+      {"id": "train", "type": "trainer", "params": {
+        "epochs": 3, "batch_size": 4, "num_workers": 2,
+        "optimizer": {"name": "sgd", "lr": 0.01, "momentum": 0.9, "weight_decay": 0.0005}
+      }}
+    ],
+    "edges": [["data", "tf"], ["tf", "model"], ["model", "train"]]
+  }
+}

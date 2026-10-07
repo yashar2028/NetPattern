@@ -1,0 +1,29 @@
+{
+  "kind": "train",
+  "pipeline": {
+    "task": {"type": "classification.single_label"},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {
+        "format": "image_folder",
+        "root": "synthetic-nifti/classification",
+        "slices": {"axis": 2, "context": 1}
+      }},
+      {"id": "tf", "type": "transforms", "params": {"preset": "basic"}},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "graph",
+        "input": {"shape": [3, 64, 64]},
+        "nodes": [
+          {"id": "c1", "op": "Conv2d", "params": {"out_channels": 16, "stride": 2}},
+          {"id": "bn1", "op": "BatchNorm2d"},
+          {"id": "a1", "op": "ReLU"},
+          {"id": "block", "op": "BasicBlock", "params": {"out_channels": 32, "stride": 2}},
+          {"id": "gap", "op": "GlobalAvgPool"},
+          {"id": "fc", "op": "Linear", "params": {"out_features": "$num_outputs"}}
+        ],
+        "edges": [["input", "c1"], ["c1", "bn1"], ["bn1", "a1"], ["a1", "block"], ["block", "gap"], ["gap", "fc"]]
+      }}},
+      {"id": "train", "type": "trainer", "params": {"epochs": 4, "batch_size": 16, "num_workers": 2, "optimizer": {"lr": 0.003}}}
+    ],
+    "edges": [["data", "tf"], ["tf", "model"], ["model", "train"]]
+  }
+}

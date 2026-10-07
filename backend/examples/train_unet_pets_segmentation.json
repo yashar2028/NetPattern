@@ -1,0 +1,29 @@
+{
+  "kind": "train",
+  "pipeline": {
+    "task": {"type": "segmentation.semantic", "classes": ["background", "pet"]},
+    "nodes": [
+      {"id": "data", "type": "dataset", "params": {
+        "format": "segmentation_folders",
+        "root": "oxford-pets",
+        "images_dir": "images",
+        "masks_dir": "annotations/trimaps",
+        "mask_mapping": {"1": 1, "2": 0, "3": 255},
+        "split": {"strategy": "random"}
+      }},
+      {"id": "tf", "type": "transforms", "params": {
+        "image_size": 128,
+        "train": [{"op": "RandomHorizontalFlip", "params": {"p": 0.5}}]
+      }},
+      {"id": "model", "type": "model", "params": {"architecture": {
+        "kind": "pretrained",
+        "base": {"source": "netpattern", "name": "unet", "encoder": "resnet18", "weights": "DEFAULT", "options": {"image_size": 128}}
+      }}},
+      {"id": "train", "type": "trainer", "params": {
+        "epochs": 4, "batch_size": 16, "num_workers": 2,
+        "optimizer": {"name": "adamw", "lr": 0.001}
+      }}
+    ],
+    "edges": [["data", "tf"], ["tf", "model"], ["model", "train"]]
+  }
+}
