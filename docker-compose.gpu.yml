@@ -1,0 +1,13 @@
+# GPU override for machines with an NVIDIA GPU (e.g. the 16 GB GPU laptop).
+# Needs the NVIDIA driver plus Docker Desktop (WSL2) or the NVIDIA Container Toolkit.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+services:
+  worker:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

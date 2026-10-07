@@ -1,0 +1,51 @@
+[project]
+name = "netpattern-backend"
+version = "0.1.0"
+description = "NetPattern control plane: Platform API, inference gateway and sandbox worker"
+authors = [
+    {name = "Yashar Najafi", email = "yasharnajafi2028@gmail.com"}
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi (>=0.142.2,<0.143.0)",
+    "uvicorn[standard] (>=0.54.0,<0.55.0)",
+    "sqlalchemy[asyncio] (>=2.1.2,<3.0.0)",
+    "asyncpg (>=0.31.0,<0.32.0)",
+    "alembic (>=1.20.0,<2.0.0)",
+    "pydantic-settings (>=2.15.0,<3.0.0)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["app", "netpattern_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs the compose PostgreSQL database",
+]
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "pytest-asyncio (>=1.4.0,<2.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+    "black (>=26.5.1,<27.0.0)",
+    "isort (>=9.0.2,<10.0.0)",
+    "flake8 (>=7.4.1,<8.0.0)",
+    "pre-commit (>=4.6.2,<5.0.0)"
+]
