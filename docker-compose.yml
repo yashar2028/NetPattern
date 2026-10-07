@@ -1,0 +1,89 @@
+name: netpattern
+
+# Settings shared by the API and the worker (both run the backend image).
+x-backend-environment: &backend-environment
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netpattern}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-netpattern_dev}
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  STORAGE_ROOT: /data
+
+services:
+  db:
+    image: postgres:17
+    container_name: netpattern_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-netpattern_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-netpattern}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    image: netpattern-backend:dev
+    container_name: netpattern_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *backend-environment
+      # Windows bind mounts don't deliver file events to containers; poll instead.
+      WATCHFILES_FORCE_POLLING: "true"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - storage:/data
+    command: bash -lc "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"
+
+  worker:
+    build:
+      context: ./backend
+    image: netpattern-backend:dev
+    container_name: netpattern_worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *backend-environment
+      WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-30}
+    volumes:
+      - ./backend:/app
+      - storage:/data
+      # Pinned sandbox environments survive container rebuilds.
+      - nix_store:/nix
+    # tini reaps sandbox child processes and forwards SIGTERM.
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped
+    command: python -m app.workers.main
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: netpattern_frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_USE_POLLING: "true"
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+volumes:
+  postgres_data:
+  storage:
+  nix_store:

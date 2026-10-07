@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netpattern-engine"
+version = "0.1.0"
+description = "NetPattern training engine. Runs only inside Nix-pinned sandboxes."
+authors = [
+    {name = "Yashar Najafi", email = "yasharnajafi2028@gmail.com"}
+]
+requires-python = ">=3.12"
+# Versions are not pinned here on purpose: the sandbox environment (backend/flake.nix
+# + flake.lock) provides and pins every dependency.
+dependencies = [
+    "pydantic>=2",
+    "numpy",
+    "pillow",
+    "pydicom",
+    "nibabel",
+    "torch",
+    "torchvision",
+    "timm",
+    "torchmetrics",
+]
+
+[project.scripts]
+netpattern-runtime = "netpattern_engine.runtime:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["netpattern_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "gpu: needs a CUDA GPU (run on the GPU laptop)",
+]

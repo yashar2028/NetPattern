@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# NetPattern
+node_modules/
+storage/
+.sandbox_runs/
+# Nix build output symlinks
+result
+result-*
+# Model weights and exported models
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+PLAN.md

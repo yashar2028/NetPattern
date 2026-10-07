@@ -1,0 +1,7 @@
+Alembic migrations (async template, asyncpg).
+
+Create a revision inside the backend container:
+
+    docker compose exec backend alembic revision --autogenerate -m "describe change"
+
+Revision ids follow the YYYYMMDD_NNNN pattern used by the baseline.

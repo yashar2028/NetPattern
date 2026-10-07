@@ -1,0 +1,6 @@
+# Files are bind-mounted into Linux containers: keep LF line endings on every OS.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.svg text
