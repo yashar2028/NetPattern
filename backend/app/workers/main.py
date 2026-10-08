@@ -6,12 +6,14 @@ into PostgreSQL, keeps a heartbeat, and honours cancellation.
 """
 
 import asyncio
+import contextlib
 import logging
 import shutil
 import signal
 import time
 
 import asyncpg
+import uvicorn
 from sqlalchemy.engine import make_url
 
 from app import __version__
@@ -20,6 +22,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.job import Job, JobStatus
 from app.workers import queue
 from app.workers.handlers import JobHandler
+from app.workers.sessions import SessionManager, internal_api
 
 logger = logging.getLogger("netpattern.worker")
 
@@ -62,13 +65,42 @@ async def connect_with_retry(dsn: str) -> asyncpg.Connection:
     raise RuntimeError("unreachable")
 
 
+class _InternalServer(uvicorn.Server):
+    """uvicorn inside the worker's own event loop; the worker handles the signals."""
+
+    @contextlib.contextmanager
+    def capture_signals(self):
+        yield
+
+
 class Worker:
     def __init__(self, stop: asyncio.Event) -> None:
         self.stop = stop
         self.wake = asyncio.Event()
         self.handler = JobHandler()
+        self.sessions = SessionManager(self.handler.manager)
         self.current_job: str | None = None
         self.cancel_requested = False
+
+    async def _serve_sessions(self) -> None:
+        server = _InternalServer(
+            uvicorn.Config(
+                internal_api(self.sessions),
+                host="0.0.0.0",
+                port=settings.WORKER_INTERNAL_PORT,
+                log_level="warning",
+            )
+        )
+        serving = asyncio.create_task(server.serve())
+        try:
+            while not self.stop.is_set():
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self.stop.wait(), timeout=60)
+                await self.sessions.stop_idle()
+        finally:
+            server.should_exit = True
+            await serving
+            await self.sessions.stop_all()
 
     def _on_jobs(self, connection, pid, channel, payload) -> None:
         self.wake.set()
@@ -92,6 +124,7 @@ class Worker:
             nix_version or "not found",
         )
         last_recovery = time.monotonic()
+        sessions_task = asyncio.create_task(self._serve_sessions())
         try:
             while not self.stop.is_set():
                 async with AsyncSessionLocal() as db:
@@ -115,6 +148,8 @@ class Worker:
                 for waiter in waiters:
                     waiter.cancel()
         finally:
+            self.stop.set()
+            await sessions_task
             await listener.close()
             logger.info("Worker stopped")
 

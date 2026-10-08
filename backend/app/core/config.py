@@ -21,6 +21,15 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
 
+    # Auth: signs access tokens. Required, no default.
+    AUTH_JWT_SECRET: str
+    AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 7 * 24 * 60
+
+    # Dataset uploads (zip archives), sized for real test datasets (PLAN D20).
+    MAX_UPLOAD_BYTES: int = 2 * 1024**3
+    MAX_EXTRACTED_BYTES: int = 8 * 1024**3
+    MAX_UPLOAD_FILES: int = 200_000
+
     # Comma-separated list of browser origins allowed to call the API.
     CORS_ORIGINS: str = "http://localhost:5173"
 
@@ -35,6 +44,9 @@ class Settings(BaseSettings):
     WORKER_TIERS: str = "cpu"
     # Fallback poll interval when no NOTIFY arrives.
     WORKER_POLL_SECONDS: int = 5
+    # Internal API for editor sessions; reachable only on the compose network.
+    WORKER_INTERNAL_PORT: int = 9000
+    WORKER_INTERNAL_URL: str = "http://worker:9000"
     # A running job whose heartbeat is older than this is treated as orphaned.
     JOB_STALE_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2

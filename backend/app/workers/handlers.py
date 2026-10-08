@@ -1,8 +1,8 @@
 """Run one claimed job inside a pinned, isolated sandbox environment.
 
-1. Resolve dataset paths (only the datasets folder is visible to sandboxes).
+1. Resolve dataset paths; only the job's own dataset folders are visible to its sandbox.
 2. Find the capability packs the pipeline needs and add them (PLAN D23).
-3. Build or reuse the environment (template + packs + engine snapshot).
+3. Build or reuse the environment (template + packs + the sandbox's pinned engine).
 4. Prefetch pretrained weights in a network-enabled step.
 5. Run the job without network; stream every event into job_events.
 """
@@ -20,7 +20,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.job import Job, JobStatus
+from app.models.job import Environment, Job, JobStatus
+from app.models.sandbox import Sandbox
 from app.sandbox.environments import EnvironmentError_, EnvironmentManager
 from app.sandbox.isolation import SandboxPolicy, sandbox_env, wrap
 from app.sandbox.runner import run_engine_job, runtime_command, stderr_tail
@@ -73,16 +74,20 @@ def _dataset_nodes(request: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path]]:
-    """The engine request with absolute dataset paths, plus extra writable paths."""
+def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path], list[Path]]:
+    """The engine request with absolute dataset paths, the dataset folders the sandbox may
+    read, and extra writable paths."""
     request = copy.deepcopy(job.payload)
     request["run_id"], request["kind"] = job.id, job.kind
     targets = _dataset_nodes(request)
     if isinstance(request.get("dataset"), dict):
         targets.append(request["dataset"])
+    readable: list[Path] = []
     for params in targets:
         if params.get("root"):
-            params["root"] = str(storage.resolve_dataset_path(params["root"]))
+            root = storage.resolve_dataset_path(params["root"])
+            params["root"] = str(root)
+            readable.append(root)
 
     writable: list[Path] = []
     if job.kind == "make_sample_dataset":
@@ -91,7 +96,7 @@ def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path]]:
         out.mkdir(parents=True, exist_ok=True)
         options["out"] = str(out)
         writable.append(out)
-    return request, writable
+    return request, readable, writable
 
 
 def needs_weights(request: dict[str, Any]) -> bool:
@@ -113,14 +118,43 @@ class JobHandler:
     def __init__(self, manager: EnvironmentManager | None = None) -> None:
         self.manager = manager or EnvironmentManager()
 
+    async def _environment(
+        self,
+        db: AsyncSession,
+        job: Job,
+        run_dir: Path,
+        request: dict[str, Any],
+        readable: list[Path],
+    ) -> Environment:
+        requested = job.environment
+        if requested.get("environment_id"):  # re-run with exactly the same environment
+            return await self.manager.get_ready(db, requested["environment_id"])
+        template = requested.get("template") or settings.DEFAULT_ENVIRONMENT_TEMPLATE
+        packs = set(requested.get("packs", []))
+        snapshot = requested.get("engine_snapshot")
+        if "pipeline" in request:
+            base = await self.manager.ensure(db, template, sorted(packs), snapshot)
+            packs |= set(
+                await self.required_packs(Path(base.store_path), run_dir, request, readable)
+            )
+        if job.kind == "make_sample_dataset" or "dataset" in request:
+            packs.add("medical")
+        return await self.manager.ensure(db, template, sorted(packs), snapshot)
+
+    async def _pin_sandbox(self, db: AsyncSession, job: Job, environment: Environment) -> None:
+        """The first run of a sandbox pins its engine; later runs reuse it (PLAN P9)."""
+        if not job.sandbox_id:
+            return
+        sandbox = await db.get(Sandbox, job.sandbox_id)
+        if sandbox is not None:
+            sandbox.pin(environment.engine_snapshot, environment.engine_version)
+
     async def required_packs(
-        self, env_path: Path, run_dir: Path, request: dict[str, Any]
+        self, env_path: Path, run_dir: Path, request: dict[str, Any], readable: list[Path]
     ) -> list[str]:
         request_file = run_dir / "requirements-request.json"
         request_file.write_text(json.dumps(request), encoding="utf-8")
-        policy = SandboxPolicy(
-            read_only=[storage.datasets_root()], read_write=[run_dir], working_dir=run_dir
-        )
+        policy = SandboxPolicy(read_only=readable, read_write=[run_dir], working_dir=run_dir)
         process = await asyncio.create_subprocess_exec(
             *wrap(
                 runtime_command(env_path, "requirements", "--request", str(request_file)), policy
@@ -153,24 +187,18 @@ class JobHandler:
         events = EventSink(db, job.id, await queue.last_seq(db, job.id))
 
         try:
-            request, writable = prepare_request(job)
+            request, readable, writable = prepare_request(job)
         except ValueError as error:
             return JobStatus.FAILED, None, str(error)
 
-        template = job.environment.get("template") or settings.DEFAULT_ENVIRONMENT_TEMPLATE
-        packs = set(job.environment.get("packs", []))
         try:
             await events.platform("phase", name="preparing environment")
-            if "pipeline" in request:
-                base = await self.manager.ensure(db, template, sorted(packs))
-                packs |= set(await self.required_packs(Path(base.store_path), run_dir, request))
-            if job.kind == "make_sample_dataset" or "dataset" in request:
-                packs.add("medical")
-            environment = await self.manager.ensure(db, template, sorted(packs))
+            environment = await self._environment(db, job, run_dir, request, readable)
         except (EnvironmentError_, JobFailure) as error:
             return JobStatus.FAILED, None, str(error)
 
         job.environment_id = environment.id
+        await self._pin_sandbox(db, job, environment)
         await db.commit()
         await events.platform(
             "environment_ready",
@@ -194,9 +222,7 @@ class JobHandler:
                 prefetch,
                 events,
                 should_cancel,
-                SandboxPolicy(
-                    read_only=[storage.datasets_root()], read_write=[cache], network=True
-                ),
+                SandboxPolicy(read_only=readable, read_write=[cache], network=True),
                 result_name="prefetch-result.json",
             )
             if outcome.cancelled:
@@ -215,7 +241,7 @@ class JobHandler:
             events,
             should_cancel,
             SandboxPolicy(
-                read_only=[storage.datasets_root(), cache],
+                read_only=[*readable, cache],
                 read_write=writable,
                 network=job.kind == "prefetch",
             ),

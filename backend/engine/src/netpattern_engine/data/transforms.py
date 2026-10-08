@@ -164,7 +164,8 @@ def build_transforms(
     resize = spec.image_size and round(spec.image_size / 0.875) or model_input.resize
 
     if spec.preset == "none":
-        return v2.Compose(steps)
+        # torchvision refuses an empty Compose; no steps means images pass through unchanged.
+        return v2.Compose(steps or [v2.Identity()])
 
     normalize = v2.Normalize(list(model_input.mean), list(model_input.std))
     if task_type == "detection.bbox":

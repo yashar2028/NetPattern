@@ -18,6 +18,11 @@
   --warn: #b45309;
   --error: #b91c1c;
   --radius: 12px;
+
+  /* Chart series in fixed order, validated for color-vision deficiency (dataviz check). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +37,9 @@
     --ok: #4ade80;
     --warn: #fbbf24;
     --error: #f87171;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
   }
 }
 

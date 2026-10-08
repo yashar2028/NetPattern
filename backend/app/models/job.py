@@ -50,6 +50,16 @@ class Job(Base):
     )
     hardware_tier: Mapped[str] = mapped_column(String(32), nullable=False, default="cpu")
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Set for jobs started through the API; CLI jobs have no owner.
+    owner_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    sandbox_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("sandboxes.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    pipeline_version_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("pipeline_versions.id", ondelete="SET NULL"), nullable=True
+    )
     # The engine request (pipeline, dataset, options) without the run id.
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     # Requested environment: {"template": ..., "packs": [...]} (packs are added as needed).

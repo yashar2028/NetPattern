@@ -1,13 +1,14 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import { useAuth } from "../context/AuthContext";
 import BackendStatus from "./BackendStatus";
 
-const navLinks = [
-  { to: "/", label: "Home", end: true },
-  { to: "/auth", label: "Sign in" },
-];
-
 export default function PublicLayout() {
+  const { user } = useAuth();
+  const navLinks = [
+    { to: "/", label: "Home", end: true },
+    user ? { to: "/sandboxes", label: "Open workspace" } : { to: "/auth", label: "Sign in" },
+  ];
   return (
     <div className="public-shell">
       <header className="site-header">
@@ -37,7 +38,7 @@ export default function PublicLayout() {
       </main>
 
       <footer className="site-footer">
-        <span>NetPattern · Phase 0 skeleton</span>
+        <span>NetPattern · early development; there are no storage limits yet</span>
       </footer>
     </div>
   );

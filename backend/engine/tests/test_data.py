@@ -202,6 +202,22 @@ def test_coco_voc_and_yolo_boxes(tmp_path):
     assert yolo_index.samples[0].boxes == ((15.0, 10.0, 45.0, 30.0),)
 
 
+def test_preset_none_without_steps_passes_images_through():
+    data = _data(format="synthetic", num_samples=4, image_size=32)
+    task = TaskSpec(type="classification.single_label")
+    index = build_index(data, task)
+    transform = build_transforms(
+        TransformsSpec(preset="none"),
+        task.type,
+        ModelInput(3, (32, 32), 32, (0.5,) * 3, (0.5,) * 3),
+        train=True,
+    )
+
+    image, _ = ImageDataset(index.samples, data, task.type, 3, 3, transform)[0]
+
+    assert tuple(image.shape) == (3, 32, 32)
+
+
 def test_detection_transforms_move_boxes_with_the_image():
     data = _data(format="synthetic", num_samples=4, image_size=32)
     task = TaskSpec(type="detection.bbox")

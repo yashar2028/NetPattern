@@ -16,4 +16,8 @@ class Base(DeclarativeBase):
 
 
 # Import models here so Alembic metadata autogeneration sees all tables.
+from app.models import dataset as dataset_models  # noqa: F401, E402
 from app.models import job as job_models  # noqa: F401, E402
+from app.models import sandbox as sandbox_models  # noqa: F401, E402
+from app.models import usage as usage_models  # noqa: F401, E402
+from app.models import user as user_models  # noqa: F401, E402
