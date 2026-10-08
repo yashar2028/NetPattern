@@ -3,6 +3,7 @@ name: netpattern
 # Settings shared by the API and the worker (both run the backend image).
 x-backend-environment: &backend-environment
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-netpattern}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-netpattern_dev}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env}
   APP_ENV: ${APP_ENV:-development}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}

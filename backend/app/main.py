@@ -4,6 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.auth import router as auth_router
+from app.api.datasets import router as datasets_router
+from app.api.runs import router as runs_router
+from app.api.sandboxes import router as sandboxes_router
+from app.api.sessions import router as sessions_router
 from app.api.system import router as system_router
 from app.core.config import settings
 from app.core.errors import register_error_handlers
@@ -28,4 +33,12 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-app.include_router(system_router)
+for router in (
+    system_router,
+    auth_router,
+    sandboxes_router,
+    sessions_router,
+    datasets_router,
+    runs_router,
+):
+    app.include_router(router)

@@ -44,7 +44,39 @@ On a machine with an NVIDIA GPU:
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
-## Train something (Phase 1: worker CLI, the API comes in Phase 2)
+## Use the app
+
+Open http://localhost:5173 and create an account (or sign in).
+
+1. **Datasets**: create a dataset and upload a zip of your image folder. Each upload is a new
+   version; "Profile" checks class counts, image sizes and problems.
+2. **Sandboxes**: create a sandbox, then a pipeline inside it. A new pipeline starts as a
+   pretrained ResNet-18 chain: Dataset → Transforms → Model → Trainer → Evaluator.
+3. Click a node to edit it. In the Dataset node pick your dataset version. In the Model node
+   choose a zoo model, or "Build custom layers instead" to open the layer editor, which shows each
+   layer's output shape and problems as you edit.
+4. **Run** saves the pipeline as a new version and starts a training run (or a one-batch sanity
+   check) on CPU or GPU. The run page shows progress live, then the charts, per-epoch table and
+   evaluation (confusion matrix, per-class scores).
+
+The first time a sandbox opens in the editor its environment starts, which can take a minute.
+
+## Use the API
+
+Interactive docs: http://localhost:8000/docs (OpenAPI at `/v1/openapi.json`).
+
+1. `POST /v1/auth/register` (or `/v1/auth/login`) returns `access_token`. Send it as
+   `Authorization: Bearer …`, or create an API key with `POST /v1/api-keys` and use that instead.
+2. `POST /v1/sandboxes` creates a sandbox.
+3. `POST /v1/datasets`, then upload a zip of your dataset folder with
+   `POST /v1/datasets/{id}/versions` (multipart field `file`).
+4. `POST /v1/sandboxes/{id}/pipelines` with a `spec`. In dataset nodes use
+   `"dataset_version_id": "dsv_…"` (plus optional `"subpath"`) instead of `root`.
+5. `POST /v1/sandboxes/{id}/runs` with `{"pipeline_version_id": "plv_…"}`.
+6. Follow it with `GET /v1/runs/{id}/events/stream` (Server-Sent Events), then read
+   `GET /v1/runs/{id}`, `GET /v1/runs` and `GET /v1/usage`.
+
+## Train from the worker CLI (no account needed; for development)
 
 ```bash
 # Test data: an Oxford-IIIT Pet subset (classification, segmentation masks, head boxes)

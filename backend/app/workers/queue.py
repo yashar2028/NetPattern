@@ -14,6 +14,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job, JobEvent, JobStatus
+from app.models.usage import UsageRecord
 
 JOBS_CHANNEL = "jobs"
 EVENTS_CHANNEL = "job_events"
@@ -33,6 +34,9 @@ async def enqueue(
     environment: dict[str, Any] | None = None,
     hardware_tier: str = "cpu",
     priority: int = 0,
+    owner_id: str | None = None,
+    sandbox_id: str | None = None,
+    pipeline_version_id: str | None = None,
 ) -> Job:
     job = Job(
         kind=kind,
@@ -41,6 +45,9 @@ async def enqueue(
         hardware_tier=hardware_tier,
         priority=priority,
         status=JobStatus.QUEUED,
+        owner_id=owner_id,
+        sandbox_id=sandbox_id,
+        pipeline_version_id=pipeline_version_id,
     )
     db.add(job)
     await db.flush()
@@ -99,11 +106,24 @@ async def finish(
     result: dict[str, Any] | None = None,
     error: str | None = None,
 ) -> None:
+    """Record the outcome; jobs of a user also add their compute time to the usage ledger."""
+    finished_at = datetime.now(UTC)
     await db.execute(
         update(Job)
         .where(Job.id == job_id)
-        .values(status=status, result=result, error=error, finished_at=datetime.now(UTC))
+        .values(status=status, result=result, error=error, finished_at=finished_at)
     )
+    job = await db.get(Job, job_id, populate_existing=True)
+    if job is not None and job.owner_id and job.started_at is not None:
+        db.add(
+            UsageRecord(
+                owner_id=job.owner_id,
+                sandbox_id=job.sandbox_id,
+                job_id=job.id,
+                hardware_tier=job.hardware_tier,
+                seconds=round((finished_at - job.started_at).total_seconds(), 3),
+            )
+        )
     await notify(db, EVENTS_CHANNEL, job_id)
     await db.commit()
 

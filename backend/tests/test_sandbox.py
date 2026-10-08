@@ -100,10 +100,11 @@ def test_prepare_request_resolves_dataset_roots():
         }
     )
 
-    request, writable = prepare_request(job)
+    request, readable, writable = prepare_request(job)
 
     root = request["pipeline"]["nodes"][0]["params"]["root"]
     assert root == str((storage.datasets_root() / "pets").resolve())
+    assert readable == [(storage.datasets_root() / "pets").resolve()]  # only this dataset
     assert request["run_id"] == "job_test" and request["kind"] == "train"
     assert writable == []
     assert (

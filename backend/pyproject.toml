@@ -12,7 +12,9 @@ dependencies = [
     "sqlalchemy[asyncio] (>=2.1.2,<3.0.0)",
     "asyncpg (>=0.31.0,<0.32.0)",
     "alembic (>=1.20.0,<2.0.0)",
-    "pydantic-settings (>=2.15.0,<3.0.0)"
+    "pydantic-settings (>=2.15.0,<3.0.0)",
+    "python-multipart (>=0.0.32,<0.0.33)",
+    "httpx (>=0.28.1,<0.29.0)"
 ]
 
 [build-system]
@@ -34,7 +36,8 @@ known_first_party = ["app", "netpattern_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "integration: needs the compose PostgreSQL database",
 ]
@@ -43,7 +46,6 @@ markers = [
 dev = [
     "pytest (>=9.1.1,<10.0.0)",
     "pytest-asyncio (>=1.4.0,<2.0.0)",
-    "httpx (>=0.28.1,<0.29.0)",
     "black (>=26.5.1,<27.0.0)",
     "isort (>=9.0.2,<10.0.0)",
     "flake8 (>=7.4.1,<8.0.0)",

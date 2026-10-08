@@ -14,4 +14,15 @@ const runtimeApiUrl = (() => {
 
 export const API_BASE_URL = runtimeApiUrl;
 
+export const AUTH_STORAGE_KEY = "netpattern_auth_token";
 export const HEALTH_POLL_MS = 15000;
+
+export const TASK_TYPES = [
+  { value: "classification.single_label", label: "Classification (one label)" },
+  { value: "classification.multi_label", label: "Classification (several labels)" },
+  { value: "regression", label: "Regression" },
+  { value: "segmentation.semantic", label: "Semantic segmentation" },
+  { value: "detection.bbox", label: "Object detection" },
+];
+
+export const FINISHED_STATUSES = ["completed", "failed", "cancelled"];

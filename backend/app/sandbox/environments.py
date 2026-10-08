@@ -119,15 +119,41 @@ class EnvironmentManager:
             staging.rename(target)
         return EngineSnapshot(snapshot_id, version, target)
 
-    async def ensure(self, db: AsyncSession, template: str, packs: list[str]) -> Environment:
-        """Return a ready environment, building it the first time it is needed."""
+    def pinned_snapshot(self, snapshot_id: str) -> EngineSnapshot:
+        """An engine snapshot a sandbox pinned earlier (kept under /data/engine-snapshots)."""
+        matches = sorted(storage.snapshots_root().glob(f"*-{snapshot_id[:12]}"))
+        if not matches:
+            raise EnvironmentError_(f"the pinned engine snapshot {snapshot_id[:12]} is missing")
+        version = matches[0].name.rsplit("-", 1)[0]
+        return EngineSnapshot(snapshot_id, version, matches[0])
+
+    async def get_ready(self, db: AsyncSession, env_id: str) -> Environment:
+        """An existing environment, unchanged (used to re-run a job exactly)."""
+        row = await db.get(Environment, env_id)
+        if row is None or row.status != EnvironmentStatus.READY.value or not row.store_path:
+            raise EnvironmentError_(f"environment {env_id} is not available")
+        if not Path(row.store_path).exists():
+            raise EnvironmentError_(f"environment {env_id} is no longer in the Nix store")
+        return row
+
+    async def ensure(
+        self,
+        db: AsyncSession,
+        template: str,
+        packs: list[str],
+        snapshot_id: str | None = None,
+    ) -> Environment:
+        """Return a ready environment, building it the first time it is needed.
+
+        With `snapshot_id` the sandbox's pinned engine is used instead of the current one.
+        """
         if template not in KNOWN_TEMPLATES:
             raise EnvironmentError_(f"unknown environment template '{template}'")
         unknown = sorted(set(packs) - set(KNOWN_PACKS))
         if unknown:
             raise EnvironmentError_(f"unknown capability pack(s): {', '.join(unknown)}")
         packs = sorted(set(packs))
-        snapshot = await self.snapshot()
+        snapshot = self.pinned_snapshot(snapshot_id) if snapshot_id else await self.snapshot()
         env_id = environment_id(template, packs, snapshot.id, self.system)
 
         lock = self._locks.setdefault(env_id, asyncio.Lock())

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netpattern-engine"
-version = "0.2.0"
+version = "0.2.1"
 description = "NetPattern training engine. Runs only inside Nix-pinned sandboxes."
 authors = [
     {name = "Yashar Najafi", email = "yasharnajafi2028@gmail.com"}
