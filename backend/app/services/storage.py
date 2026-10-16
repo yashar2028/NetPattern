@@ -34,14 +34,28 @@ def run_dir(job_id: str) -> Path:
     return runs_root() / job_id
 
 
+def predict_inputs_root() -> Path:
+    """Images uploaded for prediction jobs: predict-inputs/<user id>/<request id>/."""
+    return root() / "predict-inputs"
+
+
+def _resolve_inside(base: Path, path: str, what: str) -> Path:
+    base = base.resolve()
+    candidate = Path(path)
+    resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
+    if resolved != base and base not in resolved.parents:
+        raise ValueError(f"{what} path must be inside {base}: {path}")
+    return resolved
+
+
 def resolve_dataset_path(path: str) -> Path:
     """An absolute path inside the datasets folder; relative paths are taken from there.
 
     Raises ValueError for anything that escapes the datasets folder.
     """
-    base = datasets_root().resolve()
-    candidate = Path(path)
-    resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
-    if resolved != base and base not in resolved.parents:
-        raise ValueError(f"dataset path must be inside {base}: {path}")
-    return resolved
+    return _resolve_inside(datasets_root(), path, "dataset")
+
+
+def resolve_predict_inputs_path(path: str) -> Path:
+    """Like resolve_dataset_path, for the prediction uploads folder."""
+    return _resolve_inside(predict_inputs_root(), path, "prediction input")

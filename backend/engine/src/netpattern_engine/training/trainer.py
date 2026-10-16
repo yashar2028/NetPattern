@@ -13,8 +13,9 @@ from torch import nn
 
 from netpattern_engine.spec.training import TrainingSpec
 from netpattern_engine.tasks.base import TaskPlugin
-from netpattern_engine.training.checkpoint import save_checkpoint
+from netpattern_engine.training.checkpoint import load_checkpoint, save_checkpoint
 from netpattern_engine.training.optim import LRSchedule, build_optimizer
+from netpattern_engine.training.seed import restore_rng_state, rng_state
 
 Emit = Callable[..., None]
 
@@ -140,7 +141,8 @@ class Trainer:
         delta = self.spec.early_stopping.min_delta if self.spec.early_stopping else 0.0
         return value < best - delta if self.mode == "min" else value > best + delta
 
-    def fit(self) -> TrainOutcome:
+    def fit(self, resume: bool = False) -> TrainOutcome:
+        """Train; with `resume`, continue from last.pt of an interrupted attempt if present."""
         spec = self.spec
         optimizer = build_optimizer(self.model, spec.optimizer, self.head)
         batches = self._batches_per_epoch()
@@ -152,8 +154,19 @@ class Trainer:
         outcome = TrainOutcome(monitor=self.monitor)
         patience_left = spec.early_stopping.patience if spec.early_stopping else None
         started = time.monotonic()
+        first_epoch = 1
+        if resume:
+            restored = self._resume(optimizer, schedule, scaler, outcome)
+            if restored is not None:
+                first_epoch, patience_left = restored
+                if patience_left is not None and patience_left <= 0:
+                    outcome.stopped_reason = "early_stopping"
+                    first_epoch = spec.epochs + 1
 
-        for epoch in range(1, spec.epochs + 1):
+        def resume_state(complete: bool) -> dict[str, Any]:
+            return self._resume_state(schedule, scaler, outcome, patience_left, complete)
+
+        for epoch in range(first_epoch, spec.epochs + 1):
             epoch_started = time.monotonic()
             self.model.train()
             optimizer.zero_grad(set_to_none=True)
@@ -181,7 +194,7 @@ class Trainer:
                     optimizer.zero_grad(set_to_none=True)
                     schedule.after_step()
 
-                running_loss += float(loss)
+                running_loss += loss.detach().item()
                 seen_batches += 1
                 seen_samples += len(images)
                 now = time.monotonic()
@@ -199,7 +212,7 @@ class Trainer:
 
             if self.cancel.cancelled:
                 outcome.stopped_reason = "cancelled"
-                self._save("last.pt", epoch, {}, optimizer)
+                self._save("last.pt", epoch, {}, optimizer, resume_state(complete=False))
                 break
 
             train_loss = running_loss / max(seen_batches, 1)
@@ -218,7 +231,6 @@ class Trainer:
                     patience_left = spec.early_stopping.patience
             elif patience_left is not None:
                 patience_left -= 1
-            self._save("last.pt", epoch, metrics, optimizer)
             schedule.after_epoch(value)
 
             summary = {
@@ -231,6 +243,8 @@ class Trainer:
             }
             outcome.history.append(summary)
             outcome.epochs_run = epoch
+            # After the epoch is fully accounted for, so a resumed run starts at the next one.
+            self._save("last.pt", epoch, metrics, optimizer, resume_state(complete=True))
             self.emit("epoch_end", **summary)
             if improved:
                 self.emit(
@@ -248,7 +262,14 @@ class Trainer:
         outcome.duration_s = round(time.monotonic() - started, 2)
         return outcome
 
-    def _save(self, name: str, epoch: int, metrics: dict[str, Any], optimizer: Any) -> None:
+    def _save(
+        self,
+        name: str,
+        epoch: int,
+        metrics: dict[str, Any],
+        optimizer: Any,
+        resume: dict[str, Any] | None = None,
+    ) -> None:
         save_checkpoint(
             self.checkpoints / name,
             self.model,
@@ -257,4 +278,54 @@ class Trainer:
             self.task.state(),
             self.model_input,
             optimizer,
+            resume,
         )
+
+    def _resume_state(
+        self,
+        schedule: LRSchedule,
+        scaler: Any,
+        outcome: TrainOutcome,
+        patience_left: int | None,
+        complete: bool,
+    ) -> dict[str, Any]:
+        return {
+            "epoch_complete": complete,
+            "schedule": schedule.state_dict(),
+            "scaler": scaler.state_dict(),
+            "best_epoch": outcome.best_epoch,
+            "best_value": outcome.best_value,
+            "history": outcome.history,
+            "patience_left": patience_left,
+            "rng": rng_state(getattr(self.train_loader, "generator", None)),
+        }
+
+    def _resume(
+        self, optimizer: Any, schedule: LRSchedule, scaler: Any, outcome: TrainOutcome
+    ) -> tuple[int, int | None] | None:
+        """Load last.pt of an interrupted attempt; returns (first epoch, patience left)."""
+        path = self.checkpoints / "last.pt"
+        if not path.exists():
+            return None
+        try:
+            state = load_checkpoint(path)
+            resume = state["resume"]
+            self.model.load_state_dict(state["model_state"])
+            optimizer.load_state_dict(state["optimizer_state"])
+            schedule.load_state_dict(resume["schedule"])
+            if resume["scaler"]:
+                scaler.load_state_dict(resume["scaler"])
+            restore_rng_state(resume["rng"], getattr(self.train_loader, "generator", None))
+        except Exception as error:  # noqa: BLE001 - a bad checkpoint means a fresh start
+            self.emit(
+                "warning",
+                message=f"could not resume from the last checkpoint ({error}); starting over",
+            )
+            return None
+        epoch = int(state["epoch"])
+        outcome.best_epoch, outcome.best_value = resume["best_epoch"], resume["best_value"]
+        outcome.history = list(resume["history"])
+        outcome.epochs_run = epoch if resume["epoch_complete"] else epoch - 1
+        first_epoch = epoch + 1 if resume["epoch_complete"] else epoch
+        self.emit("resumed", from_epoch=first_epoch, epochs_done=outcome.epochs_run)
+        return first_epoch, resume["patience_left"]

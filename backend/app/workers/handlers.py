@@ -26,12 +26,21 @@ from app.sandbox.environments import EnvironmentError_, EnvironmentManager
 from app.sandbox.isolation import SandboxPolicy, sandbox_env, wrap
 from app.sandbox.runner import run_engine_job, runtime_command, stderr_tail
 from app.services import storage
+from app.services.runs import checkpoint_path
 from app.workers import queue
 
 logger = logging.getLogger("netpattern.worker")
 
-ENGINE_KINDS = ("smoke", "train", "sanity", "prefetch", "profile", "make_sample_dataset")
-WEIGHT_KINDS = ("train", "sanity")
+ENGINE_KINDS = (
+    "smoke",
+    "train",
+    "sanity",
+    "prefetch",
+    "profile",
+    "make_sample_dataset",
+    "predict",
+)
+WEIGHT_KINDS = ("train", "sanity", "predict")
 LOGGED_EVENTS = (
     "phase",
     "dataset_indexed",
@@ -79,6 +88,11 @@ def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path], list[Path]]:
     read, and extra writable paths."""
     request = copy.deepcopy(job.payload)
     request["run_id"], request["kind"] = job.id, job.kind
+    if job.kind == "predict":
+        return _prepare_predict(request)
+    # A retried training job continues from the checkpoint its last attempt left behind.
+    if job.kind == "train" and (job.attempts or 0) > 1:
+        request["resume"] = True
     targets = _dataset_nodes(request)
     if isinstance(request.get("dataset"), dict):
         targets.append(request["dataset"])
@@ -97,6 +111,23 @@ def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path], list[Path]]:
         options["out"] = str(out)
         writable.append(out)
     return request, readable, writable
+
+
+def _prepare_predict(request: dict[str, Any]) -> tuple[dict[str, Any], list[Path], list[Path]]:
+    """Predictions read the source run's checkpoint and their inputs, never the training data."""
+    checkpoint = checkpoint_path(
+        str(request.get("source_run_id", "")), str(request.get("checkpoint", ""))
+    )
+    inputs = request.get("inputs") or {}
+    if inputs.get("source") == "dataset":
+        root = storage.resolve_dataset_path(inputs.get("root", ""))
+    elif inputs.get("source") == "upload":
+        root = storage.resolve_predict_inputs_path(inputs.get("root", ""))
+    else:
+        raise ValueError("a prediction needs inputs from an upload or a dataset version")
+    request["checkpoint"] = str(checkpoint)
+    request["inputs"] = {**inputs, "root": str(root)}
+    return request, [checkpoint.parent, root], []
 
 
 def needs_weights(request: dict[str, Any]) -> bool:

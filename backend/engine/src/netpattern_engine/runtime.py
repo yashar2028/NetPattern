@@ -5,7 +5,7 @@
     schema   print the engine's JSON Schema and capabilities
     requirements --request FILE   print the capability packs a pipeline needs
 
-Job kinds: smoke, train, sanity, prefetch, profile, make_sample_dataset.
+Job kinds: smoke, train, sanity, prefetch, profile, make_sample_dataset, predict.
 """
 
 from __future__ import annotations
@@ -84,7 +84,22 @@ def _run_kind(kind: str, request: dict[str, Any], run_dir: Path, cancel: Any) ->
     if kind == "train":
         from netpattern_engine.pipeline import train
 
-        return train(_resolve(request), run_dir, emit, cancel)
+        return train(_resolve(request), run_dir, emit, cancel, resume=bool(request.get("resume")))
+    if kind == "predict":
+        from netpattern_engine.inference import predict
+
+        checkpoint, inputs = request.get("checkpoint"), request.get("inputs") or {}
+        if not checkpoint or not inputs.get("root"):
+            raise EngineError("predict needs a 'checkpoint' and 'inputs.root'")
+        return predict(
+            _resolve(request),
+            Path(checkpoint),
+            Path(inputs["root"]),
+            request.get("options", {}),
+            run_dir,
+            emit,
+            cancel,
+        )
     if kind == "sanity":
         from netpattern_engine.pipeline import sanity
 

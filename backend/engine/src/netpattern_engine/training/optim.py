@@ -98,6 +98,25 @@ class LRSchedule:
         if self.epoch_scheduler is not None and monitor_value is not None:
             self.epoch_scheduler.step(monitor_value)
 
+    def state_dict(self) -> dict:
+        """Plain values only; the learning rates themselves live in the optimizer state."""
+        return {
+            "batch_steps": (
+                self.batch_scheduler.last_epoch if self.batch_scheduler is not None else None
+            ),
+            "epoch": (
+                self.epoch_scheduler.state_dict() if self.epoch_scheduler is not None else None
+            ),
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        """Call after the optimizer state was loaded (it restores the current LRs)."""
+        if self.batch_scheduler is not None and state.get("batch_steps") is not None:
+            self.batch_scheduler.last_epoch = int(state["batch_steps"])
+            self.batch_scheduler._last_lr = [g["lr"] for g in self.optimizer.param_groups]
+        if self.epoch_scheduler is not None and state.get("epoch") is not None:
+            self.epoch_scheduler.load_state_dict(state["epoch"])
+
     @property
     def lr(self) -> float:
         return float(self.optimizer.param_groups[0]["lr"])

@@ -75,6 +75,22 @@ Interactive docs: http://localhost:8000/docs (OpenAPI at `/v1/openapi.json`).
 5. `POST /v1/sandboxes/{id}/runs` with `{"pipeline_version_id": "plv_…"}`.
 6. Follow it with `GET /v1/runs/{id}/events/stream` (Server-Sent Events), then read
    `GET /v1/runs/{id}`, `GET /v1/runs` and `GET /v1/usage`.
+7. Download the trained weights with `GET /v1/runs/{id}/checkpoints/best` (or `last`).
+8. Predict with a completed training run: `POST /v1/runs/{id}/predict` (multipart) with image
+   files in `files`, or a `dataset_version_id` (plus optional `subpath`). It starts a `predict`
+   run in the training run's environment; its result lists one prediction per image, and
+   segmentation masks are at `GET /v1/runs/{predict run id}/predictions/{file}`.
+
+A training run interrupted by a worker crash is retried once and continues from its last
+completed epoch. A dataset cannot be deleted while queued or running runs use it, and reruns
+fail with `inputs_missing` when their data has been deleted.
+
+Deleting a dataset (`DELETE /v1/datasets/{id}`) or one version
+(`DELETE /v1/datasets/{id}/versions/{n}`) is a soft delete: list deleted datasets with
+`GET /v1/datasets?deleted=true` (deleted versions with `GET /v1/datasets/{id}?include_deleted=true`)
+and undo it with `POST …/restore` for `DATASET_RETENTION_DAYS` (30 by default). After that the
+worker removes the files. Images uploaded for predictions are kept for
+`PREDICT_INPUTS_RETENTION_DAYS` (30 by default).
 
 ## Train from the worker CLI (no account needed; for development)
 

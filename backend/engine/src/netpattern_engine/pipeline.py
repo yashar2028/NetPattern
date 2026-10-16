@@ -20,6 +20,7 @@ from netpattern_engine.models.build import BuiltModel, build_model
 from netpattern_engine.spec.pipeline import ResolvedPipeline
 from netpattern_engine.tasks import TaskPlugin, get_task
 from netpattern_engine.training.checkpoint import load_checkpoint
+from netpattern_engine.training.optim import build_optimizer
 from netpattern_engine.training.seed import resolve_device, seed_worker, set_seed
 from netpattern_engine.training.trainer import CancelToken, Trainer, evaluate
 
@@ -131,8 +132,13 @@ def make_loader(prepared: Prepared, split: str, train: bool) -> Any | None:
 
 
 def train(
-    pipeline: ResolvedPipeline, run_dir: Path, emit: Emit, cancel: CancelToken
+    pipeline: ResolvedPipeline,
+    run_dir: Path,
+    emit: Emit,
+    cancel: CancelToken,
+    resume: bool = False,
 ) -> dict[str, Any]:
+    """`resume`: continue from run_dir/checkpoints/last.pt (a retried job) if it exists."""
     prepared = prepare(pipeline, emit)
     task, built = prepared.task, prepared.built
     train_loader = make_loader(prepared, "train", train=True)
@@ -161,7 +167,7 @@ def train(
         cancel,
         loss_fn,
     )
-    outcome = trainer.fit()
+    outcome = trainer.fit(resume=resume)
 
     evaluation: dict[str, Any] = {}
     best_path = run_dir / "checkpoints" / "best.pt"
@@ -211,9 +217,7 @@ def sanity(pipeline: ResolvedPipeline, emit: Emit, steps: int = SANITY_STEPS) ->
     images, targets = next(iter(loader))
     images, targets = task.to_device(images, targets, prepared.device)
     loss_fn = task.make_loss(pipeline.training, []).to(prepared.device)
-    optimizer = torch.optim.Adam(
-        [p for p in model.parameters() if p.requires_grad], lr=pipeline.training.optimizer.lr
-    )
+    optimizer = build_optimizer(model, pipeline.training.optimizer, prepared.built.head)
     model.train()
     losses = []
     started = time.monotonic()
@@ -222,7 +226,7 @@ def sanity(pipeline: ResolvedPipeline, emit: Emit, steps: int = SANITY_STEPS) ->
         loss = task.train_step(model, images, targets, loss_fn)
         loss.backward()
         optimizer.step()
-        losses.append(round(float(loss), 6))
+        losses.append(round(loss.detach().item(), 6))
         if step % 10 == 0 or step == steps:
             emit("sanity_step", step=step, steps=steps, loss=losses[-1])
     first, last = losses[0], min(losses[-5:])

@@ -1,21 +1,35 @@
-"""Safe extraction of uploaded dataset archives (PLAN §12.1).
+"""Safe extraction of uploaded dataset archives (PLAN §12.1), and cleanup after crashes.
 
 Rejects paths that escape the target folder, symlinks, too many files and archives
 that expand beyond the size limit. A single top-level folder is stripped, so a zip
 of `pets/…` and a zip of `pets`'s contents give the same layout.
 """
 
+import asyncio
 import shutil
 import stat
+import time
 import zipfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.dataset import FAILED, READY, UPLOADING, DatasetVersion
+from app.services import storage
 
 SKIPPED = ("__MACOSX/", ".DS_Store", "Thumbs.db")
 CHUNK = 1024 * 1024
+PARTIAL_SUFFIX = ".partial"
 
 
 class UploadError(ValueError):
     pass
+
+
+def staging_folder(target: Path) -> Path:
+    return target.with_name(target.name + PARTIAL_SUFFIX)
 
 
 def _skip(name: str) -> bool:
@@ -42,7 +56,7 @@ def extract_zip(archive: Path, target: Path, max_bytes: int, max_files: int) -> 
         tops = {p[0] for p in parts}
         strip = len(tops) == 1 and all(len(p) > 1 for p in parts)
 
-        staging = target.with_name(target.name + ".partial")
+        staging = staging_folder(target)
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
         root = staging.resolve()
@@ -67,3 +81,62 @@ def extract_zip(archive: Path, target: Path, max_bytes: int, max_files: int) -> 
             raise
         staging.rename(target)
         return len(entries), written
+
+
+# --------------------------------------------------------------------------- crash cleanup
+
+
+def _remove_leftovers(active: set[str], known: set[str], cutoff: float) -> None:
+    """Delete old upload archives, staging folders and version folders without a row.
+
+    `active`: folders of uploads in progress; `known`: folders of every live version.
+    Anything modified after `cutoff` (a timestamp) is left alone.
+    """
+    datasets = storage.datasets_root()
+    for archive in (datasets / ".uploads").glob("*.zip"):
+        if archive.stat().st_mtime < cutoff:
+            archive.unlink(missing_ok=True)
+    for folder in datasets.glob("users/*/*/v*"):
+        if not folder.is_dir() or folder.stat().st_mtime >= cutoff:
+            continue
+        relative = folder.relative_to(datasets).as_posix()
+        if relative.endswith(PARTIAL_SUFFIX):
+            if relative.removesuffix(PARTIAL_SUFFIX) in active:
+                continue
+        elif relative in known:
+            continue
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+async def sweep_stale_uploads(db: AsyncSession, stale_seconds: int) -> list[str]:
+    """Mark interrupted uploads as failed and remove the files they left behind.
+
+    Returns the ids of the versions marked as failed.
+    """
+    cutoff = datetime.now(UTC) - timedelta(seconds=stale_seconds)
+    stale = (
+        (
+            await db.execute(
+                select(DatasetVersion)
+                .where(DatasetVersion.status == UPLOADING, DatasetVersion.created_at < cutoff)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for version in stale:
+        version.status = FAILED
+    await db.commit()
+
+    rows = (
+        await db.execute(
+            select(DatasetVersion.path, DatasetVersion.status).where(
+                DatasetVersion.status.in_([UPLOADING, READY])
+            )
+        )
+    ).all()
+    active = {path for path, status in rows if status == UPLOADING}
+    known = {path for path, _ in rows}
+    await asyncio.to_thread(_remove_leftovers, active, known, time.time() - stale_seconds)
+    return [version.id for version in stale]

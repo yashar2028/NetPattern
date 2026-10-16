@@ -61,7 +61,7 @@ services:
       WORKER_TIERS: ${WORKER_TIERS:-cpu}
       # bwrap: each sandbox gets its own user/PID/network namespaces (works with
       # Docker's default seccomp profile). Use "none" only to debug the engine.
-      SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-bwrap}
+      SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-none}
     volumes:
       - ./backend:/app
       - storage:/data

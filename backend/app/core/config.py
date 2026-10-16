@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     MAX_UPLOAD_BYTES: int = 2 * 1024**3
     MAX_EXTRACTED_BYTES: int = 8 * 1024**3
     MAX_UPLOAD_FILES: int = 200_000
+    # Uploads still unfinished after this long are treated as interrupted and cleaned up.
+    UPLOAD_STALE_SECONDS: int = 2 * 60 * 60
+    # Deleted datasets and versions can be restored for this long, then their files are removed.
+    DATASET_RETENTION_DAYS: int = 30
+    # Images uploaded for predictions are kept this long (reruns need them).
+    PREDICT_INPUTS_RETENTION_DAYS: int = 30
+
+    # Prediction requests with uploaded images.
+    PREDICT_MAX_FILES: int = 100
+    PREDICT_MAX_UPLOAD_BYTES: int = 200 * 1024**2
 
     # Comma-separated list of browser origins allowed to call the API.
     CORS_ORIGINS: str = "http://localhost:5173"
