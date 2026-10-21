@@ -44,8 +44,11 @@ def register(client):
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def cleanup_test_users():
+async def cleanup_test_users(request):
     yield
+    # Unit-only runs (CI) have no database.
+    if not any(item.get_closest_marker("integration") for item in request.session.items):
+        return
     async with AsyncSessionLocal() as db:
         users = (
             await db.execute(User.__table__.select().where(User.email.like("%@example.test")))
