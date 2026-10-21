@@ -231,3 +231,5 @@ result-*
 *.safetensors
 
 PLAN.md
+# Shared with the team separately
+docs/
