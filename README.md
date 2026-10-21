@@ -6,7 +6,9 @@ train it on the hardware tier they choose, evaluate it, and call it from their o
 through a REST API. Every model lives in its own Nix-pinned sandbox, so it behaves the same way
 in the future as it does today.
 
-The blueprint, decisions and roadmap are in [PLAN.md](PLAN.md).
+Documentation for contributors: [architecture](docs/architecture.md), [extending](docs/extending.md),
+[deploying on a VM](docs/deploy.md), [scaling to more machines](docs/scaling.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Stack
 
@@ -23,7 +25,11 @@ The blueprint, decisions and roadmap are in [PLAN.md](PLAN.md).
 - `backend/app/`: the API, the worker (`workers/`), the sandbox boundary (`sandbox/`).
 - `backend/engine/`: the engine package and its flake (environment templates, capability packs).
 - `backend/examples/`: ready-to-run job requests.
-- `docker-compose.yml`: db, backend, worker, frontend (three images).
+- `sdk/python/`: a small Python client for deployed models.
+- `docs/`: architecture, extending, deploy, scaling.
+- `docker-compose.yml`: db, backend, worker, frontend. Overrides: `.gpu.yml` (NVIDIA), `.prod.yml`
+  (production on a VM), `.worker-node.yml` (an extra worker machine).
+- `scripts/backup.sh`: database + storage backup.
 
 ## Run
 
@@ -55,9 +61,18 @@ Open http://localhost:5173 and create an account (or sign in).
 3. Click a node to edit it. In the Dataset node pick your dataset version. In the Model node
    choose a zoo model, or "Build custom layers instead" to open the layer editor, which shows each
    layer's output shape and problems as you edit.
-4. **Run** saves the pipeline as a new version and starts a training run (or a one-batch sanity
-   check) on CPU or GPU. The run page shows progress live, then the charts, per-epoch table and
-   evaluation (confusion matrix, per-class scores).
+4. **Run** saves the pipeline as a new version and starts a training run, a one-batch sanity
+   check or a learning-rate finder on the hardware tier you pick. The run page shows progress
+   live, then charts, the per-epoch table, evaluation (confusion matrix, per-class scores) and the
+   misclassified images. "Report" opens a printable report; "Reproduce locally" downloads a bundle
+   that rebuilds the exact environment with Nix.
+5. **Sweep** (pipeline page) runs the pipeline over a grid of values, or as k-fold
+   cross-validation; select runs on the sandbox page and **Compare** them.
+6. **Register as model** (run page), then **Deploy** it on the Models page. The deployment page has
+   a playground (with Grad-CAM explanations), copy-paste API snippets and the request log.
+   **Export** gives weights, TorchScript and ONNX.
+7. **API keys**: create an inference key (optionally for one deployment) to call models from your
+   software. **Teams** share sandboxes and datasets with colleagues.
 
 The first time a sandbox opens in the editor its environment starts, which can take a minute.
 
@@ -74,7 +89,18 @@ Interactive docs: http://localhost:8000/docs (OpenAPI at `/v1/openapi.json`).
    `"dataset_version_id": "dsv_…"` (plus optional `"subpath"`) instead of `root`.
 5. `POST /v1/sandboxes/{id}/runs` with `{"pipeline_version_id": "plv_…"}`.
 6. Follow it with `GET /v1/runs/{id}/events/stream` (Server-Sent Events), then read
-   `GET /v1/runs/{id}`, `GET /v1/runs` and `GET /v1/usage`.
+   `GET /v1/runs/{id}`, `GET /v1/runs` and `GET /v1/usage` (compute units = tier rate × seconds,
+   see `GET /v1/hardware-tiers`).
+7. `POST /v1/models` with `{"run_id": …, "name": …}`, then `POST /v1/deployments` with
+   `{"model_version_id": …, "name": …, "mode": "serverless" | "dedicated"}`.
+8. Call it with an inference key (`POST /v1/api-keys` with `"scope": "inference"`):
+
+   ```bash
+   curl -X POST http://localhost:8000/v1/deployments/<dep_id>/predict \
+     -H "Authorization: Bearer $NETPATTERN_API_KEY" -F "files=@image.png"
+   ```
+
+   or from Python with the SDK in `sdk/python` (`Client().predict("dep_…", ["image.png"])`).
 
 ## Train from the worker CLI (no account needed; for development)
 
@@ -112,7 +138,7 @@ Each run writes `request.json`, `result.json`, `stderr.log` and `checkpoints/` t
 
 - **Templates:** `pytorch-cpu` and `pytorch-cuda12`.
 - **Capability packs** are added automatically when a pipeline needs them: `medical` for DICOM
-  and NIfTI data, `detection` for detection metrics.
+  and NIfTI data, `detection` for detection metrics, `export` for ONNX export.
 - Each environment gets its own generated `flake.nix` + `flake.lock` under `/data/envs/<id>`.
 
 ```bash
@@ -125,6 +151,20 @@ Isolation is set by `SANDBOX_ISOLATION` in `.env`:
 - `bwrap` (the default): each sandbox runs as `nobody` in its own namespaces, with no network,
   the Nix store and datasets read-only, and write access only to its run folder.
 - `none`: for debugging the engine only.
+
+## Worker capacity
+
+One worker runs `WORKER_MAX_JOBS` jobs at once (default 1). Each job gets a bubble the size of its
+hardware tier (`cpu`: 2 cores, `cpu-large`: 8 cores, `gpu`: 1 GPU + 4 cores; configurable), pinned
+to its own cores and GPUs. See [docs/deploy.md](docs/deploy.md#worker-capacity-bubbles).
+
+## Production
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Port 80 serves the app with the API on the same origin. See [docs/deploy.md](docs/deploy.md).
 
 ## Checks
 

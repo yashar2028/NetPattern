@@ -174,6 +174,9 @@ function Field({ name, schema, root, required, value, onChange }) {
         </label>
       );
     case "string":
+      if (resolved.format === "code") {
+        return <CodeField label={label} value={value ?? resolved.default ?? ""} onChange={onChange} />;
+      }
       return (
         <label className="field">
           {label}
@@ -227,6 +230,30 @@ function OptionalObject({ name, schema, root, value, onChange }) {
       </legend>
       {enabled && <ObjectFields schema={schema} root={root} value={value} onChange={onChange} />}
     </fieldset>
+  );
+}
+
+/** Source code (code block layers): a monospace text area, Tab inserts spaces. */
+function CodeField({ label, value, onChange }) {
+  return (
+    <label className="field">
+      {label}
+      <textarea
+        className="code-field"
+        rows={14}
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          event.preventDefault();
+          const { selectionStart, selectionEnd, value: text } = event.target;
+          const next = `${text.slice(0, selectionStart)}    ${text.slice(selectionEnd)}`;
+          onChange(next);
+          requestAnimationFrame(() => event.target.setSelectionRange(selectionStart + 4, selectionStart + 4));
+        }}
+      />
+    </label>
   );
 }
 

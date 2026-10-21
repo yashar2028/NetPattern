@@ -3,6 +3,7 @@
 import socket
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,13 +41,25 @@ class Settings(BaseSettings):
     # Worker (runtime host)
     WORKER_ID: str = socket.gethostname()
     WORKER_HEARTBEAT_SECONDS: int = 30
-    # Hardware tiers this worker serves, comma-separated (cpu, gpu).
+    # Hardware tiers this worker serves, comma-separated (see app/core/tiers.py).
     WORKER_TIERS: str = "cpu"
+    # Machine capacity shared by the jobs running at once (PLAN §11.6). Unset = detected.
+    WORKER_CPUS: int | None = None
+    WORKER_MEMORY_GB: float | None = None
+    WORKER_GPUS: int = 0
+    # Job slots: how many jobs may run at once (a bigger machine can run more).
+    WORKER_MAX_JOBS: int = 1
+    # Dedicated machine: only this account's jobs (user email). Unset = shared worker.
+    WORKER_ACCOUNT: str | None = None
+    # Bubble sizes and rates as JSON; empty = the defaults in app/core/tiers.py.
+    HARDWARE_TIERS: str | None = None
     # Fallback poll interval when no NOTIFY arrives.
     WORKER_POLL_SECONDS: int = 5
     # Internal API for editor sessions; reachable only on the compose network.
     WORKER_INTERNAL_PORT: int = 9000
     WORKER_INTERNAL_URL: str = "http://worker:9000"
+    # How the API reaches this worker; registered in the workers table (default: the above).
+    WORKER_ADVERTISE_URL: str | None = None
     # A running job whose heartbeat is older than this is treated as orphaned.
     JOB_STALE_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2
@@ -60,6 +73,28 @@ class Settings(BaseSettings):
     SANDBOX_JOB_TIMEOUT_SECONDS: int = 6 * 60 * 60
     SANDBOX_CANCEL_GRACE_SECONDS: int = 30
     SANDBOX_SESSION_IDLE_SECONDS: int = 15 * 60
+    # Code block layers run user Python inside the sandbox. Keep off for external users until the
+    # hardened isolation of PLAN §4.5 is in place.
+    CODE_BLOCKS_ENABLED: bool = True
+
+    # Deployments and the inference API (PLAN §8.5)
+    DEPLOYMENT_IDLE_SECONDS: int = 10 * 60  # serverless model processes stop after this
+    INFERENCE_MAX_FILES: int = 16  # images per predict call
+    INFERENCE_MAX_BYTES: int = 25 * 1024**2  # per predict call
+    INFERENCE_RATE_LIMIT_PER_MINUTE: int = 120  # per API key (or user), per backend process
+
+    @field_validator(
+        "WORKER_CPUS",
+        "WORKER_MEMORY_GB",
+        "WORKER_ACCOUNT",
+        "WORKER_ADVERTISE_URL",
+        "HARDWARE_TIERS",
+        mode="before",
+    )
+    @classmethod
+    def _empty_is_unset(cls, value):
+        # docker compose passes unset optional variables as empty strings.
+        return None if value == "" else value
 
     @property
     def cors_origins(self) -> list[str]:

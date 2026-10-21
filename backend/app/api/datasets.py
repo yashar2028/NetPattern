@@ -17,7 +17,7 @@ from app.db.session import get_db
 from app.models.dataset import Dataset, DatasetVersion
 from app.models.user import User
 from app.schemas.api import DatasetCreate, DatasetOut, DatasetVersionOut, ProfileRequest, RunOut
-from app.services import storage
+from app.services import access, storage
 from app.services.runs import RunRequestError, dataset_folder
 from app.services.uploads import UploadError, extract_zip
 from app.workers import queue
@@ -26,9 +26,16 @@ router = APIRouter(prefix="/v1/datasets", tags=["datasets"])
 CHUNK = 1024 * 1024
 
 
-async def owned_dataset(db: AsyncSession, dataset_id: str, user: User) -> Dataset:
+async def owned_dataset(
+    db: AsyncSession, dataset_id: str, user: User, owner_only: bool = False
+) -> Dataset:
+    """The dataset if the user owns it or (unless owner_only) shares it through a team."""
     dataset = await db.get(Dataset, dataset_id)
-    if dataset is None or dataset.owner_id != user.id:
+    if dataset is None:
+        raise not_found("Dataset")
+    if dataset.owner_id == user.id:
+        return dataset
+    if owner_only or not await access.can_use(db, user, dataset.owner_id, dataset.team_id):
         raise not_found("Dataset")
     return dataset
 
@@ -52,7 +59,9 @@ async def _versions(db: AsyncSession, dataset_id: str) -> list[DatasetVersion]:
 async def create_dataset(
     body: DatasetCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Dataset:
-    dataset = Dataset(owner_id=user.id, name=body.name)
+    if body.team_id is not None and body.team_id not in await access.team_ids(db, user):
+        raise not_found("Team")
+    dataset = Dataset(owner_id=user.id, name=body.name, team_id=body.team_id)
     db.add(dataset)
     await db.commit()
     await db.refresh(dataset)
@@ -66,9 +75,8 @@ async def list_datasets(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows, next_cursor = await paginate(
-        db, select(Dataset).where(Dataset.owner_id == user.id), Dataset, limit, cursor
-    )
+    shared = await access.visible(db, user, Dataset.owner_id, Dataset.team_id)
+    rows, next_cursor = await paginate(db, select(Dataset).where(shared), Dataset, limit, cursor)
     return {"data": rows, "next_cursor": next_cursor}
 
 
@@ -85,10 +93,12 @@ async def get_dataset(
 async def delete_dataset(
     dataset_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Response:
-    dataset = await owned_dataset(db, dataset_id, user)
+    dataset = await owned_dataset(db, dataset_id, user, owner_only=True)
     await db.delete(dataset)
     await db.commit()
-    shutil.rmtree(storage.datasets_root() / "users" / user.id / dataset.id, ignore_errors=True)
+    shutil.rmtree(
+        storage.datasets_root() / "users" / dataset.owner_id / dataset.id, ignore_errors=True
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -108,7 +118,8 @@ async def upload_version(
         )
         or 0
     ) + 1
-    relative = Path("users") / user.id / dataset.id / f"v{number}"
+    # Under the owner's folder, also when a teammate uploads (deleting the dataset removes all).
+    relative = Path("users") / dataset.owner_id / dataset.id / f"v{number}"
     target = storage.datasets_root() / relative
     uploads = storage.datasets_root() / ".uploads"
     uploads.mkdir(parents=True, exist_ok=True)

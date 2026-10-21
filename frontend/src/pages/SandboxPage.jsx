@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Plus, RefreshCw, Workflow } from "lucide-react";
+import { GitCompare, Plus, RefreshCw, Workflow } from "lucide-react";
 
 import { errorMessage } from "../api/client";
 import { listRuns } from "../api/runsApi";
 import { createPipeline, getSandbox, listPipelines, upgradeSandbox } from "../api/sandboxesApi";
 import StatusBadge from "../components/StatusBadge";
-import { defaultSpec } from "../features/pipeline/defaults";
+import { TEMPLATES } from "../features/pipeline/defaults";
 import { formatDate } from "../utils/format";
 
 export default function SandboxPage() {
@@ -16,7 +16,9 @@ export default function SandboxPage() {
   const [pipelines, setPipelines] = useState([]);
   const [runs, setRuns] = useState([]);
   const [name, setName] = useState("");
+  const [template, setTemplate] = useState(TEMPLATES[0].id);
   const [error, setError] = useState("");
+  const [picked, setPicked] = useState([]);
 
   useEffect(() => {
     getSandbox(sandboxId).then(setSandbox).catch((caught) => setError(errorMessage(caught)));
@@ -27,7 +29,8 @@ export default function SandboxPage() {
   const newPipeline = async (event) => {
     event.preventDefault();
     try {
-      const pipeline = await createPipeline(sandboxId, { name, spec: defaultSpec() });
+      const spec = TEMPLATES.find((item) => item.id === template).spec();
+      const pipeline = await createPipeline(sandboxId, { name, spec });
       navigate(`/sandboxes/${sandboxId}/pipelines/${pipeline.id}`);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -76,6 +79,16 @@ export default function SandboxPage() {
             <span>New pipeline</span>
             <input required placeholder="e.g. resnet18 fine-tune" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
+          <label className="field">
+            <span>Start from</span>
+            <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+              {TEMPLATES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="button primary" type="submit">
             <Plus size={16} aria-hidden="true" /> Create
           </button>
@@ -94,13 +107,28 @@ export default function SandboxPage() {
       </section>
 
       <section className="section">
-        <h2>Runs</h2>
+        <div className="page-header">
+          <h2>Runs</h2>
+          {runs.length > 1 && (
+            <button
+              type="button"
+              className="button"
+              disabled={picked.length < 2}
+              onClick={() => navigate(`/compare?runs=${picked.join(",")}`)}
+            >
+              <GitCompare size={16} aria-hidden="true" /> Compare {picked.length > 1 ? picked.length : ""} runs
+            </button>
+          )}
+        </div>
         {runs.length === 0 ? (
           <p className="muted">No runs yet. Open a pipeline and press Run.</p>
         ) : (
           <table className="table">
             <thead>
               <tr>
+                <th>
+                  <span className="visually-hidden">Compare</span>
+                </th>
                 <th>Run</th>
                 <th>Kind</th>
                 <th>Status</th>
@@ -111,6 +139,16 @@ export default function SandboxPage() {
             <tbody>
               {runs.map((run) => (
                 <tr key={run.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`compare ${run.id}`}
+                      checked={picked.includes(run.id)}
+                      onChange={(event) =>
+                        setPicked(event.target.checked ? [...picked, run.id] : picked.filter((id) => id !== run.id))
+                      }
+                    />
+                  </td>
                   <td>
                     <Link to={`/runs/${run.id}`}>
                       <code>{run.id.slice(0, 16)}</code>

@@ -19,6 +19,10 @@ class Sandbox(Base):
         String(40), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Shared with a team's members (owner keeps delete rights).
+    team_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     template: Mapped[str] = mapped_column(String(64), nullable=False)
     # Pinned by the first run or editor session; later ones use the same engine snapshot.
     engine_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -1,4 +1,6 @@
 const runtimeApiUrl = (() => {
+  // Production behind nginx: the API is on the page's own origin (/v1/…).
+  if (import.meta.env.VITE_API_BASE_URL === "same-origin") return window.location.origin;
   if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
   if (typeof window === "undefined") return "http://localhost:8000";
   const { hostname, protocol } = window.location;

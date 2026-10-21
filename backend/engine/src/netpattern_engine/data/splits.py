@@ -37,7 +37,8 @@ def split_samples(samples: list[Sample], spec: SplitSpec, task_type: str) -> dic
     assigned: dict[str, list[int]] = {split: [] for split in SPLITS}
     for names in bucket_list:
         rng.shuffle(names)
-        for split, chosen in zip(SPLITS, _allocate(names, spec)):
+        allocate = _allocate_fold if spec.folds else _allocate
+        for split, chosen in zip(SPLITS, allocate(names, spec)):
             for name in chosen:
                 assigned[split].extend(groups[name])
 
@@ -59,6 +60,17 @@ def _allocate(names: list[str], spec: SplitSpec) -> tuple[list[str], list[str], 
     n_val = min(n_val, total - n_train)
     n_test = total - n_train - n_val
     return names[:n_train], names[n_train : n_train + n_val], names[n_train + n_val :]
+
+
+def _allocate_fold(names: list[str], spec: SplitSpec) -> tuple[list[str], list[str], list[str]]:
+    """Every name lands in the test split of exactly one fold."""
+    test = [name for i, name in enumerate(names) if i % spec.folds == spec.fold]
+    rest = [name for i, name in enumerate(names) if i % spec.folds != spec.fold]
+    share = spec.val / (spec.train + spec.val)
+    n_val = round(len(rest) * share)
+    if spec.val > 0 and n_val == 0 and len(rest) >= 2:
+        n_val = 1
+    return rest[n_val:], rest[:n_val], test
 
 
 def _predefined(samples: list[Sample]) -> dict[str, list[int]]:

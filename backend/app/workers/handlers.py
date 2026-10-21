@@ -30,8 +30,17 @@ from app.workers import queue
 
 logger = logging.getLogger("netpattern.worker")
 
-ENGINE_KINDS = ("smoke", "train", "sanity", "prefetch", "profile", "make_sample_dataset")
-WEIGHT_KINDS = ("train", "sanity")
+ENGINE_KINDS = (
+    "smoke",
+    "train",
+    "sanity",
+    "lr_find",
+    "export",
+    "prefetch",
+    "profile",
+    "make_sample_dataset",
+)
+WEIGHT_KINDS = ("train", "sanity", "lr_find")
 LOGGED_EVENTS = (
     "phase",
     "dataset_indexed",
@@ -88,6 +97,12 @@ def prepare_request(job: Job) -> tuple[dict[str, Any], list[Path], list[Path]]:
             root = storage.resolve_dataset_path(params["root"])
             params["root"] = str(root)
             readable.append(root)
+
+    if request.get("model_dir"):  # export: a registered model version, read-only
+        model_dir = Path(request["model_dir"]).resolve()
+        if storage.models_root().resolve() not in model_dir.parents:
+            raise ValueError("model_dir must be inside the models folder")
+        readable.append(model_dir)
 
     writable: list[Path] = []
     if job.kind == "make_sample_dataset":
@@ -176,8 +191,13 @@ class JobHandler:
         return list(reply.get("packs", []))
 
     async def run(
-        self, db: AsyncSession, job: Job, should_cancel: Callable[[], bool]
+        self,
+        db: AsyncSession,
+        job: Job,
+        should_cancel: Callable[[], bool],
+        resources: Any = None,
     ) -> tuple[JobStatus, dict[str, Any] | None, str | None]:
+        """Run the job; `resources` is its bubble (CPU cores, GPUs) on this machine."""
         if job.kind not in ENGINE_KINDS:
             return JobStatus.FAILED, None, f"unknown job kind '{job.kind}'"
         run_dir = storage.run_dir(job.id)
@@ -222,7 +242,9 @@ class JobHandler:
                 prefetch,
                 events,
                 should_cancel,
-                SandboxPolicy(read_only=readable, read_write=[cache], network=True),
+                SandboxPolicy(
+                    read_only=readable, read_write=[cache], network=True, resources=resources
+                ),
                 result_name="prefetch-result.json",
             )
             if outcome.cancelled:
@@ -244,6 +266,7 @@ class JobHandler:
                 read_only=[*readable, cache],
                 read_write=writable,
                 network=job.kind == "prefetch",
+                resources=resources,
             ),
         )
         result = outcome.result

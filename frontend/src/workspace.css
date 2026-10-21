@@ -421,6 +421,16 @@ progress {
   border-color: var(--error);
 }
 
+.badge-active {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge-starting {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .badge-queued {
   color: var(--warn);
   border-color: var(--warn);
@@ -724,4 +734,123 @@ progress {
   .layer-editor {
     overflow-y: auto;
   }
+}
+
+/* ------------------------------------------------------------------ deployments */
+
+.secret {
+  user-select: all;
+  word-break: break-all;
+}
+
+/* The overlay is exactly as big as its image, so canvases and SVGs line up with it. */
+.overlay {
+  position: relative;
+  display: inline-block;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.overlay img {
+  display: block;
+  max-width: min(100%, 480px);
+}
+
+.overlay canvas,
+.overlay svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.overlay .box {
+  fill: none;
+  stroke: var(--series-2);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.overlay .box-label {
+  fill: var(--series-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ analysis */
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.gallery-item {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.8rem;
+}
+
+.gallery-item img,
+.image-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: var(--bg);
+  image-rendering: auto;
+}
+
+.gallery-item figcaption {
+  display: flex;
+  flex-direction: column;
+}
+
+.overlay.pixelated img {
+  width: 320px;
+  max-width: 100%;
+  image-rendering: pixelated;
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sweep-panel .inline-form {
+  display: flex;
+}
+
+.sweep-panel .grow-input {
+  flex: 1;
+}
+
+.sweep-panel .inline-form.compact input:first-child {
+  width: 240px;
+}
+
+.code-field {
+  min-height: 220px;
+  white-space: pre;
+  tab-size: 4;
+  font-size: 0.8rem;
+  line-height: 1.45;
 }

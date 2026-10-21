@@ -77,7 +77,7 @@ async def run_engine_job(
     process = await asyncio.create_subprocess_exec(
         *wrap(command, policy),
         cwd=str(run_dir),
-        env=sandbox_env(env_path, run_dir, policy.network),
+        env=sandbox_env(env_path, run_dir, policy.network, policy.resources),
         stdout=asyncio.subprocess.PIPE,
         stderr=stderr_log,
         limit=STDOUT_LINE_LIMIT,

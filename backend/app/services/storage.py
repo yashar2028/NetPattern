@@ -30,6 +30,16 @@ def cache_root() -> Path:
     return root() / "cache"
 
 
+def models_root() -> Path:
+    """Registered model versions (weights, model.json, parity samples)."""
+    return root() / "models"
+
+
+def inference_root() -> Path:
+    """Short-lived input files of predict calls, one folder per deployment."""
+    return root() / "inference"
+
+
 def run_dir(job_id: str) -> Path:
     return runs_root() / job_id
 

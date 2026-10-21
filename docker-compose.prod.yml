@@ -1,0 +1,45 @@
+# Production on our own machine (PLAN Phase 7): one VM in a data centre, same images.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   (add -f docker-compose.gpu.yml on a GPU machine)
+#
+# Differences from development: code comes from the images (no bind mounts), no reloaders,
+# the frontend is built and served by nginx on port 80 with the API on the same origin,
+# PostgreSQL and the API are not published, and code blocks are off unless enabled.
+services:
+  db:
+    ports: !reset []
+    restart: unless-stopped
+
+  backend:
+    environment:
+      APP_ENV: production
+      CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
+      CODE_BLOCKS_ENABLED: ${CODE_BLOCKS_ENABLED:-false}
+      WATCHFILES_FORCE_POLLING: "false"
+    ports: !reset []
+    volumes: !override
+      - storage:/data
+    command: bash -lc "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"
+    restart: unless-stopped
+
+  worker:
+    environment:
+      APP_ENV: production
+      CODE_BLOCKS_ENABLED: ${CODE_BLOCKS_ENABLED:-false}
+    volumes: !override
+      - storage:/data
+      - nix_store:/nix
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    image: netpattern-frontend:prod
+    ports: !override
+      - "${HTTP_PORT:-80}:80"
+    volumes: !reset []
+    command: !reset []
+    depends_on:
+      - backend
+    restart: unless-stopped

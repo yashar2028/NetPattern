@@ -57,8 +57,16 @@ services:
     environment:
       <<: *backend-environment
       WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-30}
-      # Hardware tiers this worker serves; the GPU override adds gpu.
-      WORKER_TIERS: ${WORKER_TIERS:-cpu}
+      # Hardware tiers (bubble sizes) this worker serves; the GPU override adds gpu.
+      WORKER_TIERS: ${WORKER_TIERS:-cpu,cpu-large}
+      # How many jobs run at once, and the share of the machine they split (unset = detected).
+      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-1}
+      WORKER_CPUS: ${WORKER_CPUS:-}
+      WORKER_MEMORY_GB: ${WORKER_MEMORY_GB:-}
+      # Dedicated machine: only this account's jobs (email). Empty = shared worker.
+      WORKER_ACCOUNT: ${WORKER_ACCOUNT:-}
+      # Bubble sizes and rates as JSON (empty = defaults in backend/app/core/tiers.py).
+      HARDWARE_TIERS: ${HARDWARE_TIERS:-}
       # bwrap: each sandbox gets its own user/PID/network namespaces (works with
       # Docker's default seccomp profile). Use "none" only to debug the engine.
       SANDBOX_ISOLATION: ${SANDBOX_ISOLATION:-bwrap}

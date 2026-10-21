@@ -5,7 +5,7 @@
     schema   print the engine's JSON Schema and capabilities
     requirements --request FILE   print the capability packs a pipeline needs
 
-Job kinds: smoke, train, sanity, prefetch, profile, make_sample_dataset.
+Job kinds: smoke, train, sanity, lr_find, export, prefetch, profile, make_sample_dataset.
 """
 
 from __future__ import annotations
@@ -90,6 +90,18 @@ def _run_kind(kind: str, request: dict[str, Any], run_dir: Path, cancel: Any) ->
 
         steps = int(request.get("options", {}).get("steps", 60))
         return sanity(_resolve(request), emit, steps)
+    if kind == "export":
+        from netpattern_engine.export import FORMATS, export_model
+
+        if not request.get("model_dir"):
+            raise EngineError("export needs model_dir")
+        formats = request.get("options", {}).get("formats") or list(FORMATS)
+        return export_model(Path(request["model_dir"]), run_dir, formats, emit)
+    if kind == "lr_find":
+        from netpattern_engine.analysis import lr_find
+
+        steps = int(request.get("options", {}).get("steps", 100))
+        return lr_find(_resolve(request), emit, cancel, steps=steps)
     if kind == "prefetch":
         from netpattern_engine.pipeline import prefetch
 

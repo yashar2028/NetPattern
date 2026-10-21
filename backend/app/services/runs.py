@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import Dataset, DatasetVersion
 from app.models.user import User
+from app.services import access
 
 
 class RunRequestError(ValueError):
@@ -32,7 +33,11 @@ def dataset_folder(version: DatasetVersion, subpath: str | None) -> str:
 async def owned_dataset_version(db: AsyncSession, version_id: str, user: User) -> DatasetVersion:
     version = await db.get(DatasetVersion, version_id)
     dataset = await db.get(Dataset, version.dataset_id) if version else None
-    if version is None or dataset is None or dataset.owner_id != user.id:
+    if (
+        version is None
+        or dataset is None
+        or not await access.can_use(db, user, dataset.owner_id, dataset.team_id)
+    ):
         raise RunRequestError(f"dataset version '{version_id}' not found")
     return version
 

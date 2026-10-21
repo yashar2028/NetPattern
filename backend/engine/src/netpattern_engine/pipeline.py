@@ -36,6 +36,7 @@ class Prepared:
     built: BuiltModel
     device: torch.device
     generator: torch.Generator
+    data_channels: int = 3
 
 
 def required_packs(pipeline: ResolvedPipeline) -> list[str]:
@@ -97,7 +98,7 @@ def prepare(pipeline: ResolvedPipeline, emit: Emit, materialize: bool = True) ->
         device=str(device),
         **{key: value for key, value in built.info.items() if key in ("weights_ref", "note")},
     )
-    return Prepared(pipeline, task, index, splits, built, device, generator)
+    return Prepared(pipeline, task, index, splits, built, device, generator, data_channels)
 
 
 def make_loader(prepared: Prepared, split: str, train: bool) -> Any | None:
@@ -164,6 +165,7 @@ def train(
     outcome = trainer.fit()
 
     evaluation: dict[str, Any] = {}
+    errors: dict[str, Any] | None = None
     best_path = run_dir / "checkpoints" / "best.pt"
     if outcome.stopped_reason != "cancelled" and best_path.exists():
         emit("phase", name="evaluating best checkpoint")
@@ -177,6 +179,8 @@ def train(
             )
             evaluation[split] = {"metrics": scalars, "details": details}
             emit("evaluation", split=split, metrics=scalars)
+        save_model_description(prepared, run_dir, emit)
+        errors = _error_gallery(prepared, run_dir)
 
     return {
         "status": "cancelled" if outcome.stopped_reason == "cancelled" else "completed",
@@ -195,12 +199,45 @@ def train(
         },
         "training": dataclasses.asdict(outcome),
         "evaluation": evaluation,
+        "errors": errors,
         "checkpoints": {
             name: f"checkpoints/{name}.pt"
             for name in ("best", "last")
             if (run_dir / "checkpoints" / f"{name}.pt").exists()
         },
     }
+
+
+def _error_gallery(prepared: Prepared, run_dir: Path) -> dict[str, Any] | None:
+    """Misclassified samples of the test split (or val), for single-label classification."""
+    from netpattern_engine.analysis import error_gallery
+
+    if prepared.task.type != "classification.single_label":
+        return None
+    split = next((s for s in ("test", "val") if prepared.splits.get(s)), None)
+    if split is None:
+        return None
+    return error_gallery(prepared, make_loader(prepared, split, train=False), split, run_dir)
+
+
+def save_model_description(prepared: Prepared, run_dir: Path, emit: Emit) -> None:
+    """model.json and parity samples next to the checkpoints, so the run can become a model."""
+    import json
+
+    from netpattern_engine.inference import MODEL_FILE, Predictor, describe_model, write_parity
+
+    pipeline, task, built = prepared.pipeline, prepared.task, prepared.built
+    description = describe_model(pipeline, task, built.input, prepared.data_channels)
+    (run_dir / MODEL_FILE).write_text(json.dumps(description, indent=2), encoding="utf-8")
+    split = next((s for s in ("test", "val", "train") if prepared.splits.get(s)), "train")
+    samples = [prepared.index.samples[i] for i in prepared.splits[split]]
+    try:
+        predictor = Predictor(
+            built.module, task, built.input, pipeline.transforms, pipeline.data, prepared.device
+        )
+        write_parity(predictor, samples, pipeline.data, run_dir)
+    except Exception as error:  # noqa: BLE001 - a model without parity samples is still usable
+        emit("warning", message=f"could not save parity samples: {str(error)[:200]}")
 
 
 def sanity(pipeline: ResolvedPipeline, emit: Emit, steps: int = SANITY_STEPS) -> dict[str, Any]:

@@ -67,3 +67,20 @@ export async function getUsage() {
   const response = await apiClient.get("/v1/usage");
   return response.data;
 }
+
+export async function getVersionById(versionId) {
+  const response = await apiClient.get(`/v1/pipeline-versions/${versionId}`);
+  return response.data;
+}
+
+/** Bubble sizes a job can run in, with their rates (compute units per second). */
+export async function hardwareTiers() {
+  const response = await apiClient.get("/v1/hardware-tiers");
+  return response.data;
+}
+
+/** Many runs of one pipeline version with chosen values changed (see backend app/api/sweeps.py). */
+export async function startSweep(sandboxId, payload) {
+  const response = await apiClient.post(`/v1/sandboxes/${sandboxId}/sweeps`, payload);
+  return response.data;
+}

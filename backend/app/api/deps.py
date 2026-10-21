@@ -1,6 +1,7 @@
 """Shared API dependencies: the current user from a JWT or an API key."""
 
 import hmac
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import Depends, status
@@ -21,19 +22,27 @@ from app.services.security import (
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+SCOPE_ALL = "all"
+SCOPE_INFERENCE = "inference"
+
 
 def _unauthorized(detail: str) -> ApiError:
     return ApiError(status.HTTP_401_UNAUTHORIZED, "unauthorized", "Authentication required", detail)
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+@dataclass
+class Caller:
+    user: User
+    api_key: ApiKey | None = None  # None for a browser session (JWT)
+
+
+async def authenticate(
+    credentials: HTTPAuthorizationCredentials | None, db: AsyncSession
+) -> Caller:
     if credentials is None:
         raise _unauthorized("send `Authorization: Bearer <token or API key>`")
     credential = credentials.credentials
-
+    key = None
     if is_api_key(credential):
         candidates = (
             await db.execute(
@@ -58,7 +67,30 @@ async def get_current_user(
 
     if user is None:
         raise _unauthorized("the user no longer exists")
-    return user
+    return Caller(user, key)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """The whole API: browser sessions and keys with scope `all`."""
+    caller = await authenticate(credentials, db)
+    if caller.api_key is not None and caller.api_key.scope != SCOPE_ALL:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "insufficient_scope",
+            "This API key may only call deployments (schema, predict)",
+        )
+    return caller.user
+
+
+async def get_inference_caller(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Caller:
+    """Deployment schema/predict: any valid credential; scope checks are per deployment."""
+    return await authenticate(credentials, db)
 
 
 def not_found(what: str) -> ApiError:

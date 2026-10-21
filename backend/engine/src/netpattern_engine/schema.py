@@ -55,6 +55,7 @@ def schema_document() -> dict[str, Any]:
             "packs": {
                 "medical": "DICOM and NIfTI images and masks",
                 "detection": "object detection metrics (mAP)",
+                "export": "ONNX export",
             },
         },
     }
