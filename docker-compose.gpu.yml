@@ -5,7 +5,8 @@
 services:
   worker:
     environment:
-      WORKER_TIERS: cpu,gpu
+      WORKER_TIERS: cpu,cpu-large,gpu
+      WORKER_GPUS: ${WORKER_GPUS:-1}
     deploy:
       resources:
         reservations:
