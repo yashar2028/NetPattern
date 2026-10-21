@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 SNAPSHOT_FILES = ("flake.nix", "flake.lock", "pyproject.toml")
 KNOWN_TEMPLATES = ("pytorch-cpu", "pytorch-cuda12")
-KNOWN_PACKS = ("detection", "medical")
+KNOWN_PACKS = ("detection", "export", "medical")
 BUILD_TIMEOUT_SECONDS = 2 * 60 * 60
 
 
@@ -115,7 +115,11 @@ class EnvironmentManager:
             for path in files:
                 destination = staging / path.relative_to(self.engine_dir)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, destination)
+                shutil.copyfile(path, destination)
+                # Fixed permissions: Nix hashes the executable bit, and a Windows bind mount
+                # shows every file as executable. Same content then means the same store path
+                # on every machine (and in "reproduce locally" bundles).
+                destination.chmod(0o644)
             staging.rename(target)
         return EngineSnapshot(snapshot_id, version, target)
 
@@ -128,12 +132,29 @@ class EnvironmentManager:
         return EngineSnapshot(snapshot_id, version, matches[0])
 
     async def get_ready(self, db: AsyncSession, env_id: str) -> Environment:
-        """An existing environment, unchanged (used to re-run a job exactly)."""
+        """An existing environment, unchanged (re-runs, deployments, exports)."""
         row = await db.get(Environment, env_id)
         if row is None or row.status != EnvironmentStatus.READY.value or not row.store_path:
             raise EnvironmentError_(f"environment {env_id} is not available")
         if not Path(row.store_path).exists():
-            raise EnvironmentError_(f"environment {env_id} is no longer in the Nix store")
+            # Built on another machine (shared database, separate Nix stores) or garbage
+            # collected: rebuild here from the same flake and lock, which gives the same path.
+            expected = row.store_path
+            async with self._locks.setdefault(env_id, asyncio.Lock()):
+                if not Path(expected).exists():
+                    try:
+                        await self._build(row)
+                    except (EnvironmentError_, CommandError) as error:
+                        raise EnvironmentError_(
+                            f"environment {env_id} is not on this machine and could not be "
+                            f"rebuilt: {error}"
+                        ) from error
+            if row.store_path != expected:
+                raise EnvironmentError_(
+                    f"rebuilding {env_id} gave {row.store_path}, not {expected}; "
+                    "the pinned inputs are no longer reproducible"
+                )
+            await db.commit()
         return row
 
     async def ensure(

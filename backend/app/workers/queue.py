@@ -10,11 +10,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tiers import rate as tier_rate
 from app.models.job import Job, JobEvent, JobStatus
 from app.models.usage import UsageRecord
+from app.models.user import User
 
 JOBS_CHANNEL = "jobs"
 EVENTS_CHANNEL = "job_events"
@@ -56,11 +58,22 @@ async def enqueue(
     return job
 
 
-async def claim_next(db: AsyncSession, worker_id: str, tiers: list[str]) -> Job | None:
-    """Atomically move the next queued job for these tiers to 'running'."""
+async def claim_next(
+    db: AsyncSession, worker_id: str, tiers: list[str], account_id: str | None = None
+) -> Job | None:
+    """Atomically move the next queued job for these tiers to 'running'.
+
+    A dedicated worker (account_id) takes only that account's jobs; shared workers skip the
+    jobs of accounts that have a dedicated machine.
+    """
+    if account_id:
+        owner = Job.owner_id == account_id
+    else:
+        dedicated = select(User.id).where(User.dedicated_worker.is_(True))
+        owner = or_(Job.owner_id.is_(None), Job.owner_id.not_in(dedicated))
     candidate = (
         select(Job.id)
-        .where(Job.status == JobStatus.QUEUED, Job.hardware_tier.in_(tiers))
+        .where(Job.status == JobStatus.QUEUED, Job.hardware_tier.in_(tiers), owner)
         .order_by(Job.priority.desc(), Job.created_at)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -106,7 +119,7 @@ async def finish(
     result: dict[str, Any] | None = None,
     error: str | None = None,
 ) -> None:
-    """Record the outcome; jobs of a user also add their compute time to the usage ledger."""
+    """Record the outcome; a user's job also adds its time and compute units to the ledger."""
     finished_at = datetime.now(UTC)
     await db.execute(
         update(Job)
@@ -115,13 +128,15 @@ async def finish(
     )
     job = await db.get(Job, job_id, populate_existing=True)
     if job is not None and job.owner_id and job.started_at is not None:
+        seconds = round((finished_at - job.started_at).total_seconds(), 3)
         db.add(
             UsageRecord(
                 owner_id=job.owner_id,
                 sandbox_id=job.sandbox_id,
                 job_id=job.id,
                 hardware_tier=job.hardware_tier,
-                seconds=round((finished_at - job.started_at).total_seconds(), 3),
+                seconds=seconds,
+                units=round(seconds * tier_rate(job.hardware_tier), 3),
             )
         )
     await notify(db, EVENTS_CHANNEL, job_id)

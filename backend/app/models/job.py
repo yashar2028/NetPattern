@@ -81,6 +81,12 @@ class Job(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    @property
+    def labels(self) -> dict[str, Any] | None:
+        """The values a sweep changed for this run, e.g. {"trainer.optimizer.lr": 0.001}."""
+        sweep = (self.payload or {}).get("sweep")
+        return sweep.get("values") if isinstance(sweep, dict) else None
+
 
 class JobEvent(Base):
     """One event streamed from the engine (batch, epoch_end, evaluation, …)."""

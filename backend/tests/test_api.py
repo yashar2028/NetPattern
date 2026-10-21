@@ -5,7 +5,6 @@ Runs are created on the "gpu" tier so the CPU worker of the dev stack leaves the
 
 import io
 import json
-import shutil
 import zipfile
 from datetime import UTC, datetime
 
@@ -15,24 +14,10 @@ from sqlalchemy import delete, update
 from app.db.session import AsyncSessionLocal
 from app.models.job import Job, JobStatus
 from app.models.sandbox import Sandbox
-from app.models.user import User
 from app.services import storage
 from app.workers import queue
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def cleanup_test_users():
-    yield
-    async with AsyncSessionLocal() as db:
-        users = (
-            await db.execute(User.__table__.select().where(User.email.like("%@example.test")))
-        ).all()
-        for user in users:
-            shutil.rmtree(storage.datasets_root() / "users" / user.id, ignore_errors=True)
-        await db.execute(delete(User).where(User.email.like("%@example.test")))
-        await db.commit()
 
 
 def _zip(files: dict[str, bytes]) -> bytes:

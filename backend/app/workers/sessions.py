@@ -100,7 +100,14 @@ class SessionManager:
             await self._stop(sandbox_id)
 
 
-def internal_api(sessions: SessionManager) -> FastAPI:
+def _error(error: SessionError) -> JSONResponse:
+    return JSONResponse(
+        {"error": {"code": error.code, "message": str(error), "data": error.data}},
+        status_code=422,
+    )
+
+
+def internal_api(sessions: SessionManager, deployments: Any = None) -> FastAPI:
     """Reachable only on the compose network; the backend checks ownership first."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -109,9 +116,30 @@ def internal_api(sessions: SessionManager) -> FastAPI:
         try:
             return {"result": await sessions.call(sandbox_id, method, params)}
         except SessionError as error:
-            return JSONResponse(
-                {"error": {"code": error.code, "message": str(error), "data": error.data}},
-                status_code=422,
-            )
+            return _error(error)
+
+    if deployments is not None:
+
+        @app.post("/deployments/{deployment_id}/start")
+        async def start(deployment_id: str):
+            try:
+                return {"result": await deployments.start(deployment_id)}
+            except SessionError as error:
+                return _error(error)
+
+        @app.post("/deployments/{deployment_id}/predict")
+        async def predict(deployment_id: str, body: dict[str, Any] = Body(default={})):
+            try:
+                result = await deployments.predict(
+                    deployment_id, body.get("files", []), body.get("options") or {}
+                )
+                return {"result": result}
+            except SessionError as error:
+                return _error(error)
+
+        @app.post("/deployments/{deployment_id}/stop")
+        async def stop(deployment_id: str):
+            await deployments.stop(deployment_id)
+            return {"result": {"stopped": True}}
 
     return app

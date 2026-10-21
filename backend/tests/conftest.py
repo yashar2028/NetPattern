@@ -1,4 +1,5 @@
 import os
+import shutil
 import uuid
 
 # Settings are read at import time. Inside docker compose the real values are
@@ -10,8 +11,12 @@ os.environ.setdefault("AUTH_JWT_SECRET", "test-secret-not-for-production")
 
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import delete, text  # noqa: E402
 
+from app.db.session import AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.services import storage  # noqa: E402
 
 
 @pytest.fixture
@@ -36,3 +41,20 @@ def register(client):
         return {"Authorization": f"Bearer {body['access_token']}"}, body["user"]
 
     return _register
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def cleanup_test_users():
+    yield
+    async with AsyncSessionLocal() as db:
+        users = (
+            await db.execute(User.__table__.select().where(User.email.like("%@example.test")))
+        ).all()
+        for user in users:
+            shutil.rmtree(storage.datasets_root() / "users" / user.id, ignore_errors=True)
+        await db.execute(delete(User).where(User.email.like("%@example.test")))
+        # Teams whose members were all test users are left without members.
+        await db.execute(
+            text("DELETE FROM teams WHERE id NOT IN (SELECT team_id FROM team_members)")
+        )
+        await db.commit()
