@@ -58,3 +58,19 @@ export async function streamRunEvents(runId, { onEvent, signal }) {
     }
   }
 }
+
+/** A file the run wrote (thumbnails, exports), as a Blob: images need the auth header too. */
+export async function runFile(runId, path) {
+  const response = await apiClient.get(`/v1/runs/${runId}/files/${path}`, { responseType: "blob" });
+  return response.data;
+}
+
+export async function runReport(runId) {
+  const response = await apiClient.get(`/v1/runs/${runId}/report.html`, { responseType: "blob" });
+  return response.data;
+}
+
+export async function reproduceBundle(runId) {
+  const response = await apiClient.get(`/v1/runs/${runId}/reproduce.zip`, { responseType: "blob" });
+  return response.data;
+}

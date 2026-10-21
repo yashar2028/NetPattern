@@ -8,6 +8,10 @@ import BackendStatus from "./BackendStatus";
 const navLinks = [
   { to: "/sandboxes", label: "Sandboxes" },
   { to: "/datasets", label: "Datasets" },
+  { to: "/models", label: "Models" },
+  { to: "/deployments", label: "Deployments" },
+  { to: "/api-keys", label: "API keys" },
+  { to: "/teams", label: "Teams" },
 ];
 
 export default function AppLayout() {

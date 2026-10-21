@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Loader2, Play, Save } from "lucide-react";
+import { Loader2, Play, Repeat, Save } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 
 import { errorIssues, errorMessage } from "../api/client";
 import { listDatasets } from "../api/datasetsApi";
 import { startRun } from "../api/runsApi";
-import { getPipeline, getVersion, listVersions, saveVersion, sessionCall } from "../api/sandboxesApi";
+import {
+  getPipeline,
+  getVersion,
+  hardwareTiers,
+  listVersions,
+  saveVersion,
+  sessionCall,
+  startSweep,
+} from "../api/sandboxesApi";
 import SchemaForm from "../components/SchemaForm";
 import LayerEditor from "../features/pipeline/LayerEditor";
 import { DatasetForm, EvaluatorForm, ModelForm, TransformsForm } from "../features/pipeline/NodeForms";
+import SweepPanel from "../features/pipeline/SweepPanel";
 import PipelineCanvas, { PipelinePalette } from "../features/pipeline/PipelineCanvas";
 import { NODE_BY_TYPE, defaultSpec } from "../features/pipeline/defaults";
 
@@ -55,8 +64,10 @@ export default function PipelinePage() {
   const [schema, setSchema] = useState(null);
   const [schemaError, setSchemaError] = useState("");
   const [datasets, setDatasets] = useState([]);
+  const [tiers, setTiers] = useState([{ name: "cpu", cpus: 2, gpus: 0, rate: 1 }]);
   const [selected, setSelected] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [sweepOpen, setSweepOpen] = useState(false);
   const [runOptions, setRunOptions] = useState({ kind: "train", hardware_tier: "cpu" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -90,6 +101,7 @@ export default function PipelinePage() {
       }
     })();
     listDatasets().then(setDatasets).catch(() => {});
+    hardwareTiers().then(setTiers).catch(() => {});
   }, [pipelineId, loadVersion]);
 
   // The forms come from the sandbox's own engine; the first call may start the environment.
@@ -122,6 +134,13 @@ export default function PipelinePage() {
       const target = dirty || !version ? await save() : version;
       const started = await startRun(sandboxId, { pipeline_version_id: target.id, ...runOptions });
       navigate(`/runs/${started.id}`);
+    });
+
+  const sweep = (options) =>
+    act(async () => {
+      const target = dirty || !version ? await save() : version;
+      const started = await startSweep(sandboxId, { pipeline_version_id: target.id, ...options });
+      navigate(`/compare?runs=${started.runs.map((run) => run.id).join(",")}`);
     });
 
   const switchVersion = (number) => {
@@ -174,20 +193,29 @@ export default function PipelinePage() {
           >
             <option value="train">train</option>
             <option value="sanity">sanity check (one batch)</option>
+            <option value="lr_find">learning-rate finder</option>
           </select>
           <select
             aria-label="Hardware"
             value={runOptions.hardware_tier}
             onChange={(event) => setRunOptions({ ...runOptions, hardware_tier: event.target.value })}
           >
-            <option value="cpu">CPU</option>
-            <option value="gpu">GPU</option>
+            {tiers.map((tier) => (
+              <option key={tier.name} value={tier.name} title={tier.description}>
+                {tier.name} · {tier.cpus} cores{tier.gpus ? ` + ${tier.gpus} GPU` : ""} · {tier.rate} units/s
+              </option>
+            ))}
           </select>
           <button type="button" className="button primary" disabled={busy} onClick={run}>
             <Play size={16} aria-hidden="true" /> Run
           </button>
+          <button type="button" className="button ghost" onClick={() => setSweepOpen(!sweepOpen)}>
+            <Repeat size={16} aria-hidden="true" /> Sweep
+          </button>
         </div>
       </header>
+
+      {sweepOpen && <SweepPanel tiers={tiers} onStart={sweep} onClose={() => setSweepOpen(false)} />}
 
       {error && (
         <div className="error-box" role="alert">
