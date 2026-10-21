@@ -240,3 +240,17 @@ def test_predefined_split_requires_values_on_every_sample(tmp_path):
 
     with pytest.raises(Exception, match="predefined split"):
         split_samples(index.samples, SplitSpec(strategy="predefined"), CLASSIFICATION.type)
+
+
+def test_k_fold_splits_put_every_sample_in_exactly_one_test_fold():
+    data = _data(format="synthetic", num_samples=50, image_size=16)
+    task = TaskSpec(type="classification.single_label")
+    index = build_index(data, task)
+    tests = []
+    for fold in range(5):
+        split = SplitSpec(folds=5, fold=fold, train=0.7, val=0.15, test=0.15, seed=1)
+        assigned = split_samples(index.samples, split, task.type)
+        assert not set(assigned["test"]) & (set(assigned["train"]) | set(assigned["val"]))
+        assert len(assigned["train"]) + len(assigned["val"]) + len(assigned["test"]) == 50
+        tests.extend(assigned["test"])
+    assert sorted(tests) == list(range(50))

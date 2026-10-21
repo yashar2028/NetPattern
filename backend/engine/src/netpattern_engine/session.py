@@ -261,6 +261,50 @@ def preview_transforms(params: dict[str, Any]) -> dict[str, Any]:
     return {"sample": index.samples[position].path, "images": images}
 
 
+# --------------------------------------------------------------------------- deployments
+
+# A deployment session serves one model; it is loaded once and kept in memory.
+_PREDICTOR: Any = None
+_MODEL_DIR: str | None = None
+
+
+def load_model(params: dict[str, Any]) -> dict[str, Any]:
+    global _PREDICTOR, _MODEL_DIR
+    from pathlib import Path
+
+    import torch
+
+    from netpattern_engine.inference import Predictor
+
+    device = params.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
+    _PREDICTOR = Predictor.load(Path(str(params["model_dir"])), device=device)
+    _MODEL_DIR = str(params["model_dir"])
+    return {"task": _PREDICTOR.task.type, "device": str(_PREDICTOR.device)}
+
+
+def _predictor() -> Any:
+    if _PREDICTOR is None:
+        raise RpcError(INVALID_REQUEST, "no model loaded; call load_model first")
+    return _PREDICTOR
+
+
+def predict(params: dict[str, Any]) -> dict[str, Any]:
+    from pathlib import Path
+
+    files = params.get("files") or []
+    if not isinstance(files, list) or not files:
+        raise RpcError(INVALID_PARAMS, "files must be a non-empty list of paths")
+    return _predictor().predict([Path(str(f)) for f in files], params.get("options") or {})
+
+
+def parity(params: dict[str, Any]) -> dict[str, Any]:
+    from pathlib import Path
+
+    from netpattern_engine.inference import check_parity
+
+    return check_parity(_predictor(), Path(str(_MODEL_DIR)))
+
+
 METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "ping": ping,
     "info": info,
@@ -272,6 +316,9 @@ METHODS: dict[str, Callable[[dict[str, Any]], Any]] = {
     "model_card": model_card,
     "inspect_dataset": inspect_dataset,
     "preview_transforms": preview_transforms,
+    "load_model": load_model,
+    "predict": predict,
+    "parity": parity,
 }
 
 
