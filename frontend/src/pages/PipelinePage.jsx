@@ -18,6 +18,7 @@ import {
 } from "../api/sandboxesApi";
 import SchemaForm from "../components/SchemaForm";
 import LayerEditor from "../features/pipeline/LayerEditor";
+import ModelLayers from "../features/pipeline/ModelLayers";
 import { DatasetForm, EvaluatorForm, ModelForm, TransformsForm } from "../features/pipeline/NodeForms";
 import SweepPanel from "../features/pipeline/SweepPanel";
 import PipelineCanvas, { PipelinePalette } from "../features/pipeline/PipelineCanvas";
@@ -129,8 +130,17 @@ export default function PipelinePage() {
     }
   };
 
+  // Catch the common mistake before it becomes a failed run.
+  const runnable = () => {
+    const architecture = spec.nodes.find((node) => node.type === "model")?.params?.architecture;
+    if (architecture?.kind === "graph" && !architecture.nodes?.length) {
+      throw new Error("The model has no layers yet. Open the layer editor and add layers, or use a zoo model.");
+    }
+  };
+
   const run = () =>
     act(async () => {
+      runnable();
       const target = dirty || !version ? await save() : version;
       const started = await startRun(sandboxId, { pipeline_version_id: target.id, ...runOptions });
       navigate(`/runs/${started.id}`);
@@ -138,6 +148,7 @@ export default function PipelinePage() {
 
   const sweep = (options) =>
     act(async () => {
+      runnable();
       const target = dirty || !version ? await save() : version;
       const started = await startSweep(sandboxId, { pipeline_version_id: target.id, ...options });
       navigate(`/compare?runs=${started.runs.map((run) => run.id).join(",")}`);
@@ -297,6 +308,14 @@ export default function PipelinePage() {
               ui: { ...current.ui, layers: positions },
             }))
           }
+          onClose={() => setLayersOpen(false)}
+        />
+      )}
+      {layersOpen && architecture?.kind === "pretrained" && (
+        <ModelLayers
+          sandboxId={sandboxId}
+          task={spec.task}
+          architecture={architecture}
           onClose={() => setLayersOpen(false)}
         />
       )}

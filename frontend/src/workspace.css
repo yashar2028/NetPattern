@@ -636,6 +636,11 @@ progress {
   --xy-background-color: var(--surface);
 }
 
+/* The global svg max-width would clip React Flow's zero-width edge layer. */
+.react-flow svg {
+  max-width: none;
+}
+
 .flow-node {
   min-width: 150px;
   max-width: 240px;
@@ -706,6 +711,33 @@ progress {
 .layer-summary {
   flex: 1;
   font-size: 0.9rem;
+}
+
+/* Read-only: muted text and no hover affordances. */
+.model-layers .table-scroll {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.model-layers .table td {
+  color: var(--text-muted);
+}
+
+.model-layers .group-row th {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.model-layers .function-row td {
+  font-style: italic;
+}
+
+.model-layers .head-row td {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .layer-editor .issue-list {
