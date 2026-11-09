@@ -1,0 +1,25 @@
+name: Feature
+description: A new capability for users
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User need
+      description: Who needs it and why.
+      placeholder: As a ..., I want ..., so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How we know it works (acceptance criteria).
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options: [backend, worker / sandbox, engine, frontend, devops]
