@@ -3,13 +3,20 @@
 ## Start
 
 ```bash
-cp .env.example .env            # set POSTGRES_PASSWORD and AUTH_JWT_SECRET
-docker compose up --build       # db, backend (8000), worker, frontend (5173)
+./docker_run.sh                 # db, backend (8000), worker, frontend (5173); creates .env once
+./codespaces_run.sh             # the same in GitHub Codespaces
 ```
 
 Everything runs in containers; the code is bind-mounted, so the backend and frontend reload on
 save. Restart the worker after changing `backend/app/workers` or `backend/app/sandbox`
-(`docker compose restart worker`).
+(`./docker_run.sh restart worker`).
+
+## Workflow
+
+- Pick or create an issue on the project board; branch from `dev` (`feature/<short-name>`).
+- Open a pull request into `dev` and fill in the template. CI must pass; Copilot reviews it.
+- `dev` is merged into `main` through a pull request when it is releasable. `main` is always
+  deployable.
 
 ## Read first
 
@@ -39,4 +46,11 @@ docker compose exec worker sh -c "cd engine && nix develop .#engine-dev --comman
 docker compose exec frontend sh -c "npm run lint && npm run build"
 ```
 
-CI (`.github/workflows/lint.yml`) runs the linters, the unit tests and the frontend build.
+CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `dev` and `main`:
+the linters, the unit tests, the integration tests against PostgreSQL (with coverage), the
+frontend lint and build, a check of every compose file combination and a build of the Docker
+images.
+
+Pre-commit (`pre-commit install`) runs black, isort, flake8, ESLint and gitleaks before each
+commit. ESLint uses `frontend/node_modules` if installed, otherwise the running frontend
+container; with neither it is skipped and left to CI.

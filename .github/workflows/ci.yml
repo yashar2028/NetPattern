@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+# A newer push to the same branch or pull request replaces the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # A throwaway PostgreSQL for the integration tests.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: netpattern_test
+          POSTGRES_USER: netpattern
+          POSTGRES_PASSWORD: netpattern-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U netpattern -d netpattern_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://netpattern:netpattern-ci@localhost:5432/netpattern_test
+      AUTH_JWT_SECRET: ci-secret-not-for-production
+      STORAGE_ROOT: ${{ github.workspace }}/ci-storage
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Before setup-python, so that it can cache Poetry's virtualenv.
+      - name: Install Poetry
+        run: pipx install poetry==2.3.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: poetry
+          cache-dependency-path: backend/poetry.lock
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction --no-root
+
+      - name: Black (formatter)
+        run: poetry run black --check .
+
+      - name: isort (imports)
+        run: poetry run isort --check-only .
+
+      - name: Flake8 (linter)
+        run: poetry run flake8 --config ../.flake8 app tests migrations engine
+
+      - name: Database migrations
+        run: poetry run alembic upgrade head
+
+      - name: Tests (unit and integration) with coverage
+        run: poetry run pytest --cov=app --cov-report=term
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Placeholder values: only the files' structure and interpolation are checked.
+      - name: Compose files (every documented combination)
+        env:
+          POSTGRES_PASSWORD: ci
+          AUTH_JWT_SECRET: ci
+          DATABASE_URL: postgresql+asyncpg://netpattern:ci@db:5432/netpattern
+          WORKER_ID: ci-worker
+          WORKER_ADVERTISE_URL: http://ci-worker:9000
+        run: |
+          for files in \
+            "docker-compose.yml" \
+            "docker-compose.yml docker-compose.gpu.yml" \
+            "docker-compose.yml docker-compose.prod.yml" \
+            "docker-compose.yml docker-compose.gpu.yml docker-compose.prod.yml" \
+            "docker-compose.yml docker-compose.prod.yml docker-compose.worker-node.yml"
+          do
+            args=()
+            for file in $files; do args+=(-f "$file"); done
+            echo "::group::$files"
+            docker compose "${args[@]}" config --quiet
+            echo "::endgroup::"
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Backend image (API and worker)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Frontend production image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile.prod
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

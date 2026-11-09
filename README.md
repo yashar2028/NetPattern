@@ -33,20 +33,34 @@ Documentation for contributors: [architecture](docs/architecture.md), [extending
 
 ## Run
 
-Everything runs in Docker; nothing runs directly on Windows.
+Everything runs in Docker; nothing runs directly on Windows (use Git Bash for the script).
 
 ```bash
-cp .env.example .env              # once; then set POSTGRES_PASSWORD
-docker compose up --build
+./docker_run.sh
 ```
+
+The script creates `.env` from `.env.example` with random secrets on the first run, adds the GPU
+override when it finds an NVIDIA GPU, builds and starts the stack, waits for the API and then
+follows the logs (Ctrl+C stops following, not the stack).
 
 - Frontend: http://localhost:5173 (the header shows `backend: ok`)
 - API: http://localhost:8000/health, docs at http://localhost:8000/docs
 - PostgreSQL: `localhost:5434`
 
-On a machine with an NVIDIA GPU:
+Other commands go to `docker compose` with the same files: `./docker_run.sh down`,
+`./docker_run.sh logs worker`, `./docker_run.sh restart worker`. `./docker_run.sh up --cpu` (or
+`--gpu`) overrides the GPU detection; `--no-follow` returns once the stack is up.
+
+**GitHub Codespaces:** create a codespace (*Code → Codespaces*), then run `./codespaces_run.sh`.
+It does the same, points the frontend at the forwarded API address and makes ports 5173 and 8000
+public. Open the frontend from the *Ports* tab.
+
+Without the scripts:
 
 ```bash
+cp .env.example .env              # once; then set POSTGRES_PASSWORD and AUTH_JWT_SECRET
+docker compose up --build
+# with an NVIDIA GPU:
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ```
 
@@ -178,7 +192,7 @@ docker compose exec frontend npm run lint
 
 ## Development notes
 
-Install the pre-commit hooks (black, isort, flake8) with:
+Install the pre-commit hooks (black, isort, flake8, ESLint, gitleaks) with:
 
 ```bash
 pre-commit install

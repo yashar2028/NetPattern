@@ -1,0 +1,20 @@
+name: Task
+description: Technical work without a direct user-facing change (refactoring, tooling, docs)
+labels: ["type:task"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options: [backend, worker / sandbox, engine, frontend, devops]
