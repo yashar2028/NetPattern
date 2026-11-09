@@ -1,14 +1,14 @@
 name: CI
 
+# Every pushed commit is tested once; a pull request uses the results of its newest commit, so
+# there is no separate pull_request run.
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - dev
-  pull_request:
+      - "**"
 
-# A newer push to the same branch or pull request replaces the run in progress.
+# A newer push to the same branch replaces the run in progress.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
