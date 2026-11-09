@@ -46,10 +46,14 @@ docker compose exec worker sh -c "cd engine && nix develop .#engine-dev --comman
 docker compose exec frontend sh -c "npm run lint && npm run build"
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `dev` and `main`:
-the linters, the unit tests, the integration tests against PostgreSQL (with coverage), the
-frontend lint and build, a check of every compose file combination and a build of the Docker
-images.
+CI (`.github/workflows/ci.yml`) runs on every push, on any branch: the linters, the unit tests,
+the integration tests against PostgreSQL (with coverage), the frontend lint and build, a check of
+every compose file combination and a build of the Docker images. A pull request shows the results
+of its newest commit; `main` only accepts the merge when `Backend`, `Frontend` and `Docker` pass.
+
+After CI passes on `main`, `.github/workflows/deploy.yml` deploys to the production server. It is
+switched off (the job shows as skipped) until the repository variable `DEPLOY_ENABLED` is `true`;
+see [docs/deploy.md](docs/deploy.md#deploy-from-github).
 
 Pre-commit (`pre-commit install`) runs black, isort, flake8, ESLint and gitleaks before each
 commit. ESLint uses `frontend/node_modules` if installed, otherwise the running frontend
