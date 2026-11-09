@@ -178,6 +178,9 @@ to its own cores and GPUs. See [docs/deploy.md](docs/deploy.md#worker-capacity-b
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
+Once set up, merges into `main` deploy automatically after CI passes (`.github/workflows/deploy.yml`,
+switched off until the repository variable `DEPLOY_ENABLED` is `true`).
+
 Port 80 serves the app with the API on the same origin. See [docs/deploy.md](docs/deploy.md).
 
 ## Checks
