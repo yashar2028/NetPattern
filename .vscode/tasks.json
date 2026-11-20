@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Test detection sanity",
+			"type": "shell",
+			"command": "docker compose exec -T worker sh -c \"cd engine && nix develop .#engine-dev --command pytest tests/test_training.py::test_sanity_overfits_one_batch_for_detection -q\"",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

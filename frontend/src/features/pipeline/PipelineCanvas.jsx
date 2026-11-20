@@ -1,11 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
-import { Background, Controls, Handle, Position, ReactFlow, useReactFlow } from "@xyflow/react";
-import { Brain, Database, FlaskConical, Gauge, Wand2 } from "lucide-react";
+import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from "@xyflow/react";
+import { Box, Check, Database, Play, Plus, SlidersHorizontal } from "lucide-react";
 
 import { NODE_BY_TYPE, NODE_TYPES, defaultParams } from "./defaults";
+import GraphItemPanel from "./GraphItemPanel";
+import NodeWarnings from "./NodeWarnings";
+import useCanvasLayout, { activateCanvasItem } from "./useCanvasLayout";
 
-const ICONS = { dataset: Database, transforms: Wand2, model: Brain, trainer: Gauge, evaluator: FlaskConical };
+const ICONS = { dataset: Database, transforms: SlidersHorizontal, model: Box, trainer: Play, evaluator: Check };
 const DRAG_TYPE = "application/netpattern-node";
+const EDGE_STYLE = { markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } };
 
 function summary(node) {
   const params = node.params || {};
@@ -31,13 +35,16 @@ function summary(node) {
 
 function PipelineNodeView({ data, selected }) {
   const Icon = ICONS[data.node.type];
+  const label = NODE_BY_TYPE[data.node.type]?.label;
   return (
-    <div className={`flow-node${selected ? " selected" : ""}`}>
+    <div data-tone={data.node.type} className={`flow-node canvas-card${selected ? " selected" : ""}${data.warnings.length ? " invalid" : ""}`}>
       {data.node.type !== "dataset" && <Handle type="target" position={Position.Left} />}
-      <div className="flow-node-title">
-        <Icon size={16} aria-hidden="true" /> {NODE_BY_TYPE[data.node.type]?.label}
+      <Icon className="canvas-card-icon" size={16} strokeWidth={1.6} aria-hidden="true" />
+      <div className="canvas-card-body">
+        <div className="flow-node-title">{label}</div>
+        <div className="flow-node-detail">{summary(data.node)}</div>
       </div>
-      <div className="flow-node-detail">{summary(data.node)}</div>
+      <NodeWarnings label={label} warnings={data.warnings} onWarning={data.onWarning} />
       {data.node.type !== "evaluator" && <Handle type="source" position={Position.Right} />}
     </div>
   );
@@ -45,83 +52,57 @@ function PipelineNodeView({ data, selected }) {
 
 const nodeTypes = { pipeline: PipelineNodeView };
 
-export function PipelinePalette({ spec }) {
-  const present = new Set(spec.nodes.map((node) => node.type));
-  const complete = NODE_TYPES.every((node) => present.has(node.type));
-  return (
-    <aside className="palette palette-row" aria-label="Pipeline nodes">
-      <span className="muted small">
-        {complete
-          ? "All steps are on the canvas (one of each). Click a step on the canvas to edit it."
-          : "Drag a missing step onto the canvas, then connect left to right:"}
-      </span>
-      {NODE_TYPES.map((node) => {
-        const Icon = ICONS[node.type];
-        const used = present.has(node.type);
-        return (
-          <div
-            key={node.type}
-            className={`palette-item${used ? " used" : ""}`}
-            draggable={!used}
-            onDragStart={(event) => event.dataTransfer.setData(DRAG_TYPE, node.type)}
-            title={used ? "already on the canvas" : "drag onto the canvas"}
-          >
-            <Icon size={16} aria-hidden="true" /> {node.label}
-          </div>
-        );
-      })}
-    </aside>
-  );
-}
-
-export default function PipelineCanvas({ spec, onSpecChange, selected, onSelect }) {
-  const { screenToFlowPosition } = useReactFlow();
+export default function PipelineCanvas({
+  spec, onSpecChange, selected, onSelect, warningsByNode, onWarning,
+  workspace, panel, onActivate, onDismiss, fallback,
+}) {
+  const { measurements, trackMeasurements, keepVisible, screenToFlowPosition } = useCanvasLayout();
   const [selectedEdge, setSelectedEdge] = useState(null);
   const positions = spec.ui?.pipeline;
+  const missing = NODE_TYPES.filter(({ type }) => !spec.nodes.some((node) => node.type === type));
 
   const nodes = useMemo(
     () =>
       spec.nodes.map((node, index) => ({
         id: node.id,
         type: "pipeline",
+        ariaLabel: `${NODE_BY_TYPE[node.type].label}. Enter to open settings.`,
         position: positions?.[node.id] || { x: index * 200, y: 80 },
-        data: { node },
+        measured: measurements.get(node.id),
+        data: { node, warnings: warningsByNode.get(node.id) || [], onWarning },
         selected: node.id === selected,
       })),
-    [spec.nodes, positions, selected]
+    [spec.nodes, positions, selected, measurements, warningsByNode, onWarning]
   );
   const edges = useMemo(
     () =>
       spec.edges.map(([source, target]) => {
         const id = `${source}->${target}`;
-        return { id, source, target, selected: id === selectedEdge };
+        return { id, source, target, selected: id === selectedEdge || (panel?.kind === "edge" && id === panel.id) };
       }),
-    [spec.edges, selectedEdge]
+    [spec.edges, selectedEdge, panel]
   );
 
-  // Only moves and deletions change the spec; selection and size measurements do not.
-  const onNodesChange = useCallback(
-    (changes) => {
-      const selection = changes.find((c) => c.type === "select" && c.selected);
-      if (selection) onSelect(selection.id);
-      const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
-      const moves = changes.filter((c) => c.type === "position" && c.position);
-      if (!removed.length && !moves.length) return;
-      onSpecChange((current) => {
-        const positions = { ...(current.ui?.pipeline || {}) };
-        moves.forEach((move) => (positions[move.id] = move.position));
-        removed.forEach((id) => delete positions[id]);
-        return {
-          ...current,
-          nodes: current.nodes.filter((node) => !removed.includes(node.id)),
-          edges: current.edges.filter(([s, t]) => !removed.includes(s) && !removed.includes(t)),
-          ui: { ...current.ui, pipeline: positions },
-        };
-      });
-      if (removed.includes(selected)) onSelect(null);
-    },
-    [onSpecChange, onSelect, selected]
-  );
+  const onNodesChange = (changes) => {
+    trackMeasurements(changes);
+    const selection = changes.find((c) => c.type === "select" && c.selected);
+    if (selection) onSelect(selection.id);
+    const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
+    const moves = changes.filter((c) => c.type === "position" && c.position);
+    if (!removed.length && !moves.length) return;
+    const movedPositions = Object.fromEntries(moves.map((move) => [move.id, keepVisible(move.position, move.id)]));
+    onSpecChange((current) => {
+      const positions = { ...current.ui?.pipeline, ...movedPositions };
+      removed.forEach((id) => delete positions[id]);
+      return {
+        ...current,
+        nodes: removed.length ? current.nodes.filter((node) => !removed.includes(node.id)) : current.nodes,
+        edges: removed.length ? current.edges.filter(([s, t]) => !removed.includes(s) && !removed.includes(t)) : current.edges,
+        ui: { ...current.ui, pipeline: positions },
+      };
+    });
+    if (removed.includes(selected)) onSelect(null);
+  };
 
   const onEdgesChange = useCallback(
     (changes) => {
@@ -147,25 +128,35 @@ export default function PipelineCanvas({ spec, onSpecChange, selected, onSelect 
     [onSpecChange]
   );
 
-  const onDrop = useCallback(
-    (event) => {
-      event.preventDefault();
-      const type = event.dataTransfer.getData(DRAG_TYPE);
-      if (!type || spec.nodes.some((node) => node.type === type)) return;
-      const id = NODE_BY_TYPE[type].id;
-      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      onSpecChange((current) => ({
-        ...current,
-        nodes: [...current.nodes, { id, type, params: defaultParams(type) }],
-        ui: { ...current.ui, pipeline: { ...(current.ui?.pipeline || {}), [id]: position } },
-      }));
-      onSelect(id);
-    },
-    [spec.nodes, screenToFlowPosition, onSpecChange, onSelect]
-  );
+  const addStep = (type, point) => {
+    const definition = missing.find((node) => node.type === type);
+    if (!definition || !point) return;
+    const { id } = definition;
+    const position = keepVisible(screenToFlowPosition(point));
+    onSpecChange((current) => current.nodes.some((node) => node.type === type) ? current : ({
+      ...current,
+      nodes: [...current.nodes, { id, type, params: defaultParams(type) }],
+      ui: { ...current.ui, pipeline: { ...(current.ui?.pipeline || {}), [id]: position } },
+    }));
+    onSelect(id);
+    onDismiss(!point.fromDrag);
+  };
+  const onDrop = (event) => {
+    event.preventDefault();
+    addStep(event.dataTransfer.getData(DRAG_TYPE), { x: event.clientX, y: event.clientY, fromDrag: true });
+  };
 
   return (
-    <div className="canvas" onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+    <div className="canvas graph-surface" ref={workspace} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}
+      onKeyDownCapture={(event) => activateCanvasItem(event, onActivate)}>
+      <div className="graph-tools">
+        {missing.length > 0 && (
+          <button type="button" className="button" aria-expanded={panel?.kind === "add"}
+            onClick={(event) => onActivate("add", null, event.currentTarget)}>
+            <Plus size={16} aria-hidden="true" /> Add step
+          </button>
+        )}
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -173,14 +164,46 @@ export default function PipelineCanvas({ spec, onSpecChange, selected, onSelect 
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onPaneClick={() => onSelect(null)}
+        onNodeClick={(event, node) => {
+          if (!event.target.closest(".react-flow__handle, .node-warnings")) onActivate("node", node.id, event.currentTarget);
+        }}
+        onEdgeClick={(event, edge) => onActivate("edge", edge.id, event.currentTarget)}
+        onNodeDragStart={() => onDismiss(false)}
+        onPaneClick={() => { onDismiss(false); onSelect(null); setSelectedEdge(null); }}
+        autoPanOnNodeDrag={false}
+        minZoom={0.05}
         fitView
-        fitViewOptions={{ padding: 0.05, maxZoom: 1 }}
-        colorMode="system"
+        fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+        defaultEdgeOptions={EDGE_STYLE}
+        defaultMarkerColor="var(--graph-edge)"
+        colorMode="light"
+        aria-label="Pipeline graph"
       >
-        <Background gap={20} />
+        <Background gap={20} size={1.4} color="var(--graph-dot)" />
         <Controls showInteractive={false} />
       </ReactFlow>
+      <div className="graph-caption small" aria-hidden="true">Pipeline · {spec.nodes.length} steps</div>
+      {panel?.kind === "add" && missing.length > 0 && (
+        <GraphItemPanel id="pipeline-step-picker" anchor={panel.anchor} workspace={workspace} fallback={fallback}
+          title="Add a step" closeLabel="Close picker" onDismiss={onDismiss}>
+          <p className="muted small">Choose a step or drag it to the canvas.</p>
+          <div className="graph-picker">
+            {missing.map(({ type, label }) => {
+              const Icon = ICONS[type];
+              return (
+                <button key={type} type="button" className="palette-item" draggable
+                  onDragStart={(event) => event.dataTransfer.setData(DRAG_TYPE, type)}
+                  onClick={() => {
+                    const box = workspace.current.getBoundingClientRect();
+                    addStep(type, { x: box.left + box.width * 0.35, y: box.top + box.height * 0.62 });
+                  }}>
+                  <Icon size={16} aria-hidden="true" /> {label}
+                </button>
+              );
+            })}
+          </div>
+        </GraphItemPanel>
+      )}
     </div>
   );
 }

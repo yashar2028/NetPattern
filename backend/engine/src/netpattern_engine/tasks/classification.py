@@ -78,6 +78,12 @@ class Regression(TaskPlugin):
             "target_std": self.std.tolist(),
         }
 
+    def load_state(self, state: dict[str, Any]) -> None:
+        super().load_state(state)
+        count = len(self.targets)
+        self.mean = torch.tensor(state.get("target_mean") or [0.0] * count, dtype=torch.float32)
+        self.std = torch.tensor(state.get("target_std") or [1.0] * count, dtype=torch.float32)
+
     def make_loss(self, training: TrainingSpec, train_samples: list[Sample]) -> nn.Module:
         return nn.MSELoss()
 

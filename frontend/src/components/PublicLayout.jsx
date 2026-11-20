@@ -38,7 +38,7 @@ export default function PublicLayout() {
       </main>
 
       <footer className="site-footer">
-        <span>NetPattern · early development; there are no storage limits yet</span>
+        <span>NetPattern · A workspace for image-based deep learning</span>
       </footer>
     </div>
   );

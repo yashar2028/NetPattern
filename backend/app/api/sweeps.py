@@ -141,17 +141,18 @@ async def start_sweep(
     payloads = []
     for values in combos:
         try:
-            spec = await resolve_datasets(db, apply(version.spec, values), user)
+            spec, version_ids = await resolve_datasets(db, apply(version.spec, values), user)
         except RunRequestError as error:
             raise _invalid(str(error)) from error
-        payloads.append({"pipeline": spec, "sweep": {"id": sweep.id, "values": values}})
+        payload = {"pipeline": spec, "sweep": {"id": sweep.id, "values": values}}
+        payloads.append((payload, version_ids))
     await db.commit()
 
     environment = {"template": sandbox.template}
     if sandbox.engine_snapshot:
         environment["engine_snapshot"] = sandbox.engine_snapshot
     run_ids = []
-    for payload in payloads:
+    for payload, version_ids in payloads:
         job = await queue.enqueue(
             db,
             "train",
@@ -161,6 +162,7 @@ async def start_sweep(
             owner_id=user.id,
             sandbox_id=sandbox.id,
             pipeline_version_id=version.id,
+            dataset_version_ids=version_ids,
         )
         run_ids.append(job.id)
     sweep = await db.get(Sweep, sweep.id)

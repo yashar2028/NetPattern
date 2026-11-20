@@ -28,6 +28,8 @@ from app.db.session import AsyncSessionLocal
 from app.models.job import Job, JobStatus
 from app.models.user import User
 from app.models.worker import WorkerNode
+from app.services.retention import DAY_SECONDS, purge_expired
+from app.services.uploads import sweep_stale_uploads
 from app.workers import queue
 from app.workers.capacity import Allocation, Capacity
 from app.workers.deployments import DeploymentManager
@@ -261,6 +263,22 @@ class Worker:
             )
         if recovered:
             logger.warning("Recovered orphaned job(s): %s", ", ".join(recovered))
+        try:
+            async with AsyncSessionLocal() as db:
+                failed = await sweep_stale_uploads(db, settings.UPLOAD_STALE_SECONDS)
+            async with AsyncSessionLocal() as db:
+                purged = await purge_expired(
+                    db,
+                    settings.DATASET_RETENTION_DAYS * DAY_SECONDS,
+                    settings.PREDICT_INPUTS_RETENTION_DAYS * DAY_SECONDS,
+                )
+        except Exception:  # noqa: BLE001 - cleanup must never stop the worker
+            logger.exception("Cleaning up interrupted uploads or deleted data failed")
+            return
+        if failed:
+            logger.warning("Marked interrupted upload(s) as failed: %s", ", ".join(failed))
+        if purged:
+            logger.info("Purged after their retention period: %s", ", ".join(purged))
 
     async def _process(self, job: Job, allocation: Allocation) -> None:
         logger.info(

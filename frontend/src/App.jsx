@@ -18,6 +18,7 @@ import SandboxesPage from "./pages/SandboxesPage";
 import TeamsPage from "./pages/TeamsPage";
 import "./App.css";
 import "./workspace.css";
+import "./design.css";
 
 // The canvas and chart libraries load only with the pages that use them.
 const PipelinePage = lazy(() => import("./pages/PipelinePage"));

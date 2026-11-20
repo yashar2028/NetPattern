@@ -27,7 +27,9 @@ def save_checkpoint(
     task_state: dict[str, Any],
     model_input: Any,
     optimizer: torch.optim.Optimizer | None = None,
+    resume: dict[str, Any] | None = None,
 ) -> None:
+    """`resume`: trainer state (schedule, RNG, history) to continue an interrupted run."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "format": FORMAT,
@@ -40,6 +42,8 @@ def save_checkpoint(
     }
     if optimizer is not None:
         payload["optimizer_state"] = optimizer.state_dict()
+    if resume is not None:
+        payload["resume"] = resume
     temporary = path.with_suffix(".tmp")
     torch.save(payload, temporary)
     os.replace(temporary, path)
