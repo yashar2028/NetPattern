@@ -67,7 +67,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ## Use the app
 
 Open http://localhost:5173 and create an account (or sign in).
-Use **Workspace** to switch between project areas and **Account** to sign out.
+Use the main navigation to switch between project areas and **Account** to sign out.
 Creation forms, run options, and history expand on demand; pipeline Task settings remain visible.
 
 1. **Datasets**: create a dataset and upload a zip of your image folder. Each upload is a new
@@ -116,7 +116,12 @@ issues before running it.
 
 Interactive docs: http://localhost:8000/docs (OpenAPI at `/v1/openapi.json`).
 
-1. `POST /v1/auth/register` (or `/v1/auth/login`) returns `access_token`. Send it as
+1. Retrieve `GET /v1/auth/agreement` and review its terms and privacy text. `POST /v1/auth/register`
+   requires `email`, `password`, `purpose`, `agreement_version`, and `accept_agreement: true`
+   (with optional `full_name`); it records the accepted version and time. The current text is a
+   **placeholder, not final legal terms**: replace both documents and change their version in
+   `backend/app/core/agreements.py` before real-world use. Existing accounts are not backfilled.
+   Registration (or `POST /v1/auth/login`) returns `access_token`. Send it as
    `Authorization: Bearer …`, or create an API key with `POST /v1/api-keys` and use that instead.
 2. `POST /v1/sandboxes` creates a sandbox.
 3. `POST /v1/datasets`, then upload a zip of your dataset folder with

@@ -33,31 +33,24 @@ export default function AppLayout() {
           <span className="brand-name">NetPattern</span>
         </NavLink>
         <nav className="app-nav" aria-label="Main">
-          <details className="compact-disclosure header-dropdown" name="app-header-dropdowns" onKeyDown={dismissDropdown}>
-            <summary>Workspace</summary>
-            <div className="dropdown-content">
               {navLinks.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
                   className={({ isActive }) => `site-nav-link${isActive ? " active" : ""}`}
-                  onClick={(event) => {
-                    const disclosure = event.currentTarget.closest("details");
-                    disclosure.querySelector("summary").focus();
-                    disclosure.open = false;
-                  }}
                 >
                   <link.icon size={16} aria-hidden="true" /> {link.label}
                 </NavLink>
               ))}
-            </div>
-          </details>
         </nav>
         <BackendStatus />
         <details className="compact-disclosure header-dropdown account-dropdown" name="app-header-dropdowns" onKeyDown={dismissDropdown}>
           <summary>Account</summary>
           <div className="dropdown-content">
             <p className="muted small">{user?.email}</p>
+            <NavLink className="site-nav-link" to="/" onClick={(event) => {
+              event.currentTarget.closest("details").open = false;
+            }}>About NetPattern</NavLink>
             <button type="button" className="button ghost" onClick={() => {
               signOut();
               navigate("/auth", { replace: true });

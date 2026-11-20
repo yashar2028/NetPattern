@@ -13,6 +13,7 @@ import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import delete, text  # noqa: E402
 
+from app.core.agreements import AGREEMENT_VERSION  # noqa: E402
 from app.db.session import AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.user import User  # noqa: E402
@@ -34,7 +35,14 @@ def register(client):
     async def _register() -> tuple[dict[str, str], dict]:
         email = f"user-{uuid.uuid4().hex[:10]}@example.test"
         response = await client.post(
-            "/v1/auth/register", json={"email": email, "password": "correct horse battery"}
+            "/v1/auth/register",
+            json={
+                "email": email,
+                "password": "correct horse battery",
+                "purpose": "Research",
+                "agreement_version": AGREEMENT_VERSION,
+                "accept_agreement": True,
+            },
         )
         assert response.status_code == 201, response.text
         body = response.json()

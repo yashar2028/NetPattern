@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
+from app.core.agreements import AGREEMENT_VERSION
+
 MAX_SPEC_BYTES = 1_000_000
 
 
@@ -38,6 +40,24 @@ class RegisterRequest(BaseModel):
     email: Email
     password: str = Field(min_length=8, max_length=200)
     full_name: str | None = Field(default=None, max_length=120)
+    purpose: str = Field(min_length=1, max_length=250)
+    agreement_version: str
+    accept_agreement: Literal[True]
+
+    @field_validator("purpose")
+    @classmethod
+    def purpose_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("purpose cannot be blank")
+        return value
+
+    @field_validator("agreement_version")
+    @classmethod
+    def current_agreement(cls, value: str) -> str:
+        if value != AGREEMENT_VERSION:
+            raise ValueError("agreement has changed; review the current version")
+        return value
 
 
 class LoginRequest(BaseModel):
@@ -49,6 +69,9 @@ class UserOut(Out):
     id: str
     email: str
     full_name: str | None
+    purpose: str | None
+    agreement_version: str | None
+    agreement_accepted_at: datetime | None
     created_at: datetime
 
 
