@@ -7,7 +7,7 @@ import { listDeployments } from "../api/modelsApi";
 import { formatDate } from "../utils/format";
 
 export default function ApiKeysPage() {
-  const [keys, setKeys] = useState([]);
+  const [keys, setKeys] = useState(null);
   const [deployments, setDeployments] = useState([]);
   const [form, setForm] = useState({ name: "", scope: "inference", deployment_id: "" });
   const [created, setCreated] = useState(null);
@@ -35,8 +35,12 @@ export default function ApiKeysPage() {
 
   const revoke = async (key) => {
     if (!window.confirm(`Revoke “${key.name}”? Programs using it stop working.`)) return;
-    await revokeApiKey(key.id);
-    load();
+    try {
+      await revokeApiKey(key.id);
+      load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
   };
 
   const deploymentName = (id) => deployments.find((d) => d.id === id)?.name || id;
@@ -89,7 +93,9 @@ export default function ApiKeysPage() {
           </p>
         </div>
       )}
-      {keys.length > 0 && (
+      {keys === null && !error && <p className="muted">Loading API keys…</p>}
+      {keys?.length === 0 && <div className="empty-state"><KeyRound size={24} aria-hidden="true" /><strong>No API keys yet</strong><p>Create an inference key above to use your deployed models from another application.</p></div>}
+      {keys?.length > 0 && (
         <table className="table">
           <thead>
             <tr>

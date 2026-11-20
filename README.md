@@ -70,8 +70,10 @@ Open http://localhost:5173 and create an account (or sign in).
 
 1. **Datasets**: create a dataset and upload a zip of your image folder. Each upload is a new
    version; "Profile" checks class counts, image sizes and problems.
-2. **Sandboxes**: create a sandbox, then a pipeline inside it. A new pipeline starts as a
-   pretrained ResNet-18 chain: Dataset → Transforms → Model → Trainer → Evaluator.
+2. **Sandboxes**: name a sandbox and its first pipeline together, choose an environment and a
+   starting point, then open the editor. The default pipeline starts as a pretrained ResNet-18
+   chain: Dataset → Transforms → Model → Trainer → Evaluator. You can add more pipelines from
+   the sandbox page.
 3. Click a node to edit it. In the Dataset node pick your dataset version. In the Model node
    choose a zoo model, or "Build custom layers instead" to open the layer editor, which shows each
    layer's output shape and problems as you edit.
@@ -189,6 +191,7 @@ Port 80 serves the app with the API on the same origin. See [docs/deploy.md](doc
 docker compose exec backend pytest                                   # API, queue, sandbox runner
 docker compose exec worker sh -c "cd engine && nix develop .#engine-dev --command pytest"
 docker compose exec frontend npm run lint
+docker compose exec frontend npm test
 ```
 
 `backend/engine/flake.lock` pins nixpkgs for every environment. Commit it.

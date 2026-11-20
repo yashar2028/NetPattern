@@ -1,17 +1,17 @@
 import { Suspense } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import { Boxes, Database, KeyRound, Layers, LogOut, Rocket, Users } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import BackendStatus from "./BackendStatus";
 
 const navLinks = [
-  { to: "/sandboxes", label: "Sandboxes" },
-  { to: "/datasets", label: "Datasets" },
-  { to: "/models", label: "Models" },
-  { to: "/deployments", label: "Deployments" },
-  { to: "/api-keys", label: "API keys" },
-  { to: "/teams", label: "Teams" },
+  { to: "/sandboxes", label: "Sandboxes", icon: Boxes },
+  { to: "/datasets", label: "Datasets", icon: Database },
+  { to: "/models", label: "Models", icon: Layers },
+  { to: "/deployments", label: "Deployments", icon: Rocket },
+  { to: "/api-keys", label: "API keys", icon: KeyRound },
+  { to: "/teams", label: "Teams", icon: Users },
 ];
 
 export default function AppLayout() {
@@ -19,25 +19,25 @@ export default function AppLayout() {
   const navigate = useNavigate();
 
   return (
-    <div className="public-shell">
-      <header className="site-header">
+    <div className="public-shell app-shell">
+      <header className="site-header app-header">
         <NavLink className="brand" to="/sandboxes">
           <img className="brand-mark" src="/favicon.svg" alt="" />
           <span className="brand-name">NetPattern</span>
         </NavLink>
-        <nav className="site-nav" aria-label="Main">
+        <nav className="site-nav app-nav" aria-label="Main">
           {navLinks.map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
               className={({ isActive }) => `site-nav-link${isActive ? " active" : ""}`}
             >
-              {link.label}
+              <link.icon size={16} aria-hidden="true" /> {link.label}
             </NavLink>
           ))}
         </nav>
         <BackendStatus />
-        <span className="muted user-email">{user?.email}</span>
+        <span className="muted user-email" title={user?.email}>{user?.email}</span>
         <button
           type="button"
           className="button ghost"
