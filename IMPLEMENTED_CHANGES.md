@@ -267,8 +267,6 @@ the app: that deletes persistent volumes containing accounts, datasets and runs.
   regression, segmentation, unreadable-image, runtime and task-mismatch tests.
 - [migration 0004](backend/migrations/versions/20261014_0004_upload_status_job_datasets.py).
 - [migration 0005](backend/migrations/versions/20261014_0005_dataset_soft_delete.py).
-- [.vscode/tasks.json](.vscode/tasks.json): optional editor task for the focused
-  detection sanity test. This is a development convenience, not runtime behavior.
 - [IMPLEMENTED_CHANGES.md](IMPLEMENTED_CHANGES.md): this branch change summary.
 
 No frontend application source files changed. Account registration and the Oxford

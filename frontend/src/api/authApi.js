@@ -1,5 +1,10 @@
 import { apiClient } from "./client";
 
+export async function getAgreement() {
+  const response = await apiClient.get("/v1/auth/agreement");
+  return response.data;
+}
+
 export async function registerUser(payload) {
   const response = await apiClient.post("/v1/auth/register", payload);
   return response.data;

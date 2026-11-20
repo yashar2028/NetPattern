@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete, select, update
 
+from app.core.agreements import AGREEMENT_VERSION
 from app.db.session import AsyncSessionLocal
 from app.models.dataset import Dataset, DatasetVersion
 from app.models.job import Environment, Job, JobStatus
@@ -103,7 +104,14 @@ async def test_register_login_and_me(client, register):
 
     me = await client.get("/v1/auth/me", headers=headers)
     duplicate = await client.post(
-        "/v1/auth/register", json={"email": user["email"], "password": "another password"}
+        "/v1/auth/register",
+        json={
+            "email": user["email"],
+            "password": "another password",
+            "purpose": "Research",
+            "agreement_version": AGREEMENT_VERSION,
+            "accept_agreement": True,
+        },
     )
     wrong = await client.post("/v1/auth/login", json={"email": user["email"], "password": "nope"})
     login = await client.post(
@@ -111,9 +119,34 @@ async def test_register_login_and_me(client, register):
     )
 
     assert me.json()["id"] == user["id"]
+    assert me.json()["purpose"] == "Research"
+    assert me.json()["agreement_version"] == AGREEMENT_VERSION
+    assert me.json()["agreement_accepted_at"]
     assert duplicate.status_code == 409 and duplicate.json()["code"] == "email_taken"
     assert wrong.status_code == 401
     assert login.status_code == 200 and login.json()["access_token"]
+
+
+async def test_register_requires_current_accepted_agreement_and_purpose(client):
+    agreement = (await client.get("/v1/auth/agreement")).json()
+    assert agreement["version"] == AGREEMENT_VERSION
+    body = {
+        "email": "agreement@example.test",
+        "password": "correct horse battery",
+        "purpose": "Research",
+        "agreement_version": AGREEMENT_VERSION,
+        "accept_agreement": True,
+    }
+    for changes in (
+        {"accept_agreement": False},
+        {"agreement_version": "old"},
+        {"purpose": "   "},
+    ):
+        response = await client.post("/v1/auth/register", json={**body, **changes})
+        assert response.status_code == 422
+    response = await client.post("/v1/auth/register", json=body)
+    assert response.status_code == 201
+    assert response.json()["user"]["agreement_accepted_at"]
 
 
 async def test_requests_without_credentials_get_problem_json(client):

@@ -18,7 +18,7 @@ export default function PublicLayout() {
         </NavLink>
 
         <nav className="site-nav" aria-label="Main">
-          {navLinks.map((link) => (
+          {navLinks.slice(0, 1).map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -28,6 +28,9 @@ export default function PublicLayout() {
               {link.label}
             </NavLink>
           ))}
+          <a className="site-nav-link" href="/#how-it-works">How it works</a>
+          <a className="site-nav-link" href="/#explore">Explore</a>
+          <NavLink to={navLinks[1].to} className={({ isActive }) => `site-nav-link${isActive ? " active" : ""}`}>{navLinks[1].label}</NavLink>
         </nav>
 
         <BackendStatus />
@@ -39,6 +42,7 @@ export default function PublicLayout() {
 
       <footer className="site-footer">
         <span>NetPattern · A workspace for image-based deep learning</span>
+        <div><a href="/#how-it-works">Workflow</a><a href="/#explore">Explore</a><NavLink to="/auth">Account</NavLink></div>
       </footer>
     </div>
   );
