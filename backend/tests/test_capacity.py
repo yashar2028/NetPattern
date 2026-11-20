@@ -51,6 +51,36 @@ def test_sandboxes_are_pinned_to_their_cores_and_gpus(monkeypatch):
     assert env["OMP_NUM_THREADS"] == "2" and env["CUDA_VISIBLE_DEVICES"] == ""
 
 
+def test_gpu_bubbles_get_the_gpu_devices_and_driver(monkeypatch, tmp_path):
+    dev, lib = tmp_path / "dev", tmp_path / "lib"
+    dev.mkdir()
+    lib.mkdir()
+    for name in ("nvidia0", "nvidiactl", "null"):
+        (dev / name).touch()
+    (lib / "libcuda.so.550.54").touch()
+    (lib / "libcuda.so.1").symlink_to("libcuda.so.550.54")
+    (lib / "libc.so.6").touch()  # system libraries stay out: the bubble uses Nix's glibc
+    monkeypatch.setattr("app.sandbox.isolation.GPU_DEVICES", (f"{dev}/nvidia*",))
+    monkeypatch.setattr("app.sandbox.isolation.DRIVER_LIBRARY_DIRS", (str(lib),))
+    monkeypatch.setattr("app.sandbox.isolation.WSL_DRIVER", tmp_path / "no-wsl")
+    monkeypatch.setattr("app.sandbox.isolation.shutil.which", lambda name: None)
+
+    gpu = SimpleNamespace(cpus=[0], gpus=[0])
+    command = " ".join(wrap(["python"], SandboxPolicy(resources=gpu), mode="bwrap"))
+    cpu_only = " ".join(
+        wrap(["python"], SandboxPolicy(resources=SimpleNamespace(cpus=[0], gpus=[])), "bwrap")
+    )
+
+    assert f"--dev-bind {dev}/nvidia0 {dev}/nvidia0" in command
+    assert f"--dev-bind {dev}/nvidiactl {dev}/nvidiactl" in command
+    assert f"--ro-bind {lib}/libcuda.so.550.54 /run/opengl-driver/lib/libcuda.so.1" in command
+    assert "libc.so.6" not in command and "null" not in command
+    assert "--dev-bind" not in cpu_only and "opengl-driver" not in cpu_only
+    env = sandbox_env(Path("/nix/store/env"), Path("/tmp/run"), False, gpu)
+    assert env["CUDA_VISIBLE_DEVICES"] == "0"
+    assert env["LD_LIBRARY_PATH"] == "/run/opengl-driver/lib"
+
+
 @pytest.mark.integration
 async def test_dedicated_accounts_run_only_on_their_own_worker(client, register):
     _, shared_user = await register()
