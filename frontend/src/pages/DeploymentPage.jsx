@@ -190,25 +190,18 @@ export default function DeploymentPage() {
 
       <Playground deployment={{ ...deployment, taskType: schema?.task }} onCalled={loadRequests} />
 
-      <section className="section">
-        <h2>Use via API</h2>
+      <details className="compact-disclosure">
+        <summary>Use via API</summary>
         <p className="muted">
           Create an inference key for this deployment on the <Link to="/api-keys">API keys</Link> page.
         </p>
-        <div className="toolbar" role="tablist">
-          {["curl", "python", "sdk"].map((name) => (
-            <button
-              key={name}
-              type="button"
-              role="tab"
-              aria-selected={tab === name}
-              className={`button ${tab === name ? "primary" : "ghost"}`}
-              onClick={() => setTab(name)}
-            >
-              {name === "sdk" ? "Python SDK" : name}
-            </button>
-          ))}
-        </div>
+        <label className="field">Code example
+          <select value={tab} onChange={(event) => setTab(event.target.value)}>
+            <option value="curl">curl</option>
+            <option value="python">Python</option>
+            <option value="sdk">Python SDK</option>
+          </select>
+        </label>
         <pre className="code-block">{code[tab]}</pre>
         {schema && (
           <details>
@@ -216,10 +209,10 @@ export default function DeploymentPage() {
             <pre className="code-block">{JSON.stringify(schema, null, 2)}</pre>
           </details>
         )}
-      </section>
+      </details>
 
-      <section className="section">
-        <h2>Requests</h2>
+      <details className="compact-disclosure">
+        <summary>Requests ({requests.length})</summary>
         {requests.length === 0 ? (
           <p className="muted">No calls yet.</p>
         ) : (
@@ -228,7 +221,7 @@ export default function DeploymentPage() {
               <figcaption>Latency of the last {requests.length === 1 ? "call" : `${requests.length} calls`}</figcaption>
               <LineChart series={latency} xName="call" label="Latency per call in milliseconds" height={200} />
             </figure>
-            <div className="table-scroll">
+            <div className="table-scroll compact-list" role="region" aria-label="Deployment request history" tabIndex={0}>
               <table className="table compact">
                 <thead>
                   <tr>
@@ -258,7 +251,7 @@ export default function DeploymentPage() {
             </div>
           </>
         )}
-      </section>
+      </details>
     </div>
   );
 }

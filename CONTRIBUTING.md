@@ -31,6 +31,11 @@ Sandbox, Datasets, Models, Deployments, API Keys and Teams pages, and the sandbo
 flow in `frontend/src/features/pipeline/createProject.js`. Shared style changes can affect
 these screens even when their page files are untouched.
 
+For approved UI work, use the app's dropdown-first layout: keep primary actions, pipeline
+Task settings, and canvases visible; put secondary forms, choices, and histories behind labeled
+disclosures. Keep buttons, cards, and short forms sized to their content. Use bounded, keyboard-
+scrollable tables where users need to compare records, not a dropdown that hides the records.
+
 ## Read first
 
 - [docs/architecture.md](docs/architecture.md): components, flows, data model, conventions

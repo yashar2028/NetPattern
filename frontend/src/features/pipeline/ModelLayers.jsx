@@ -4,9 +4,10 @@ import { Loader2, Lock, X } from "lucide-react";
 import { errorMessage } from "../../api/client";
 import { sessionCall } from "../../api/sandboxesApi";
 import { formatCount } from "../../utils/format";
+import EditorDialog from "./EditorDialog";
 
 /** Read-only list of a zoo model's layers, as the engine builds it for this task. */
-export default function ModelLayers({ sandboxId, task, architecture, onClose }) {
+export default function ModelLayers({ sandboxId, task, architecture, fallbackFocus, onClose }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
@@ -37,15 +38,15 @@ export default function ModelLayers({ sandboxId, task, architecture, onClose }) 
   }, null);
 
   return (
-    <div className="layer-editor model-layers" role="dialog" aria-label="Model layers">
+    <EditorDialog titleId="model-layers-title" className="model-layers" fallbackFocus={fallbackFocus} onClose={onClose}>
       <header className="layer-toolbar">
-        <h2>Layers of {architecture.base?.name}</h2>
+        <h2 id="model-layers-title" tabIndex={-1}>Layers of {architecture.base?.name}</h2>
         <span className="badge">
           <Lock size={12} aria-hidden="true" /> read-only
         </span>
         <div className="layer-summary">
           {result && `${modules.length} layers · ${formatCount(total)} params`}
-        </div>
+            </div>
         <button type="button" className="button primary" onClick={onClose}>
           <X size={16} aria-hidden="true" /> Close
         </button>
@@ -106,6 +107,6 @@ export default function ModelLayers({ sandboxId, task, architecture, onClose }) 
           </table>
         </div>
       )}
-    </div>
+    </EditorDialog>
   );
 }
