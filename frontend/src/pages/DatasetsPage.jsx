@@ -43,6 +43,8 @@ export default function DatasetsPage() {
           <p className="muted">Upload a zip of your image folder. Every upload becomes a version that never changes.</p>
         </div>
       </header>
+      <details className="compact-disclosure">
+      <summary>New dataset</summary>
       <form className="panel inline-form" onSubmit={create}>
         <label className="field grow">
           <span>New dataset</span>
@@ -65,9 +67,10 @@ export default function DatasetsPage() {
           <Plus size={16} aria-hidden="true" /> {busy ? "Creating…" : "Create dataset"}
         </button>
       </form>
+      </details>
       {error && <p className="error" role="alert">{error}</p>}
       {datasets === null && !error && <p className="muted">Loading datasets…</p>}
-      {datasets?.length === 0 && <div className="empty-state"><Database size={24} aria-hidden="true" /><strong>No datasets yet</strong><p>Name a dataset above, then upload a zip of your images.</p></div>}
+      {datasets?.length === 0 && <div className="empty-state"><Database size={24} aria-hidden="true" /><strong>No datasets yet</strong><p>Use New dataset above, then upload a zip of your images.</p></div>}
       <div className="card-grid">
         {datasets?.map((dataset) => (
           <Link key={dataset.id} className="card card-link" to={`/datasets/${dataset.id}`}>

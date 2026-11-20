@@ -1,0 +1,550 @@
+body:has(.pipeline-page) {
+  min-width: 0;
+}
+
+.app-shell:has(.pipeline-page) {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+.app-shell:has(.pipeline-page) > .app-header {
+  flex: none;
+}
+
+.app-shell:has(.pipeline-page) > .app-main {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  min-height: 0;
+}
+
+.pipeline-page {
+  flex: 1 0 auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+  overflow-wrap: anywhere;
+}
+
+.graph-header {
+  flex: none;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px clamp(12px, 2vw, 22px);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.graph-header h1,
+.graph-header h2 {
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.graph-header .button,
+.graph-header select {
+  min-height: 32px;
+  max-width: 100%;
+  padding: 4px 8px;
+  font-size: .85rem;
+}
+
+.graph-header .toolbar {
+  gap: 7px;
+}
+
+.graph-header .button svg {
+  stroke-width: 1.65;
+}
+
+.pipeline-page .graph-header p {
+  margin: 0 0 2px;
+}
+
+.pipeline-page .editor-readiness,
+.pipeline-task-settings {
+  flex: none;
+  padding: 5px clamp(8px, 2vw, 18px);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.editor-status-row,
+.editor-status-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.editor-status-copy {
+  min-width: 0;
+}
+
+.pipeline-task-settings {
+  padding: 9px clamp(12px, 2vw, 22px) 12px;
+  border-bottom: 2px solid #aebdd2;
+  box-shadow: 0 3px 8px rgb(23 36 59 / 8%);
+  position: relative;
+  z-index: 1;
+}
+
+.pipeline-task-settings h2 {
+  font-size: .85rem;
+}
+
+.pipeline-task-settings > .schema-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(126px, 100%), 1fr));
+  align-items: start;
+  width: min(100%, 1050px);
+  gap: 6px 14px;
+  margin-top: 6px;
+}
+
+.pipeline-task-settings .field {
+  min-width: 0;
+  gap: 2px;
+  font-size: .82rem;
+}
+
+.pipeline-task-settings input,
+.pipeline-task-settings select {
+  min-height: 32px;
+  min-width: 0;
+  padding: 4px 6px;
+}
+
+.pipeline-page > .error-box {
+  margin: 8px;
+  max-height: 8rem;
+  overflow: auto;
+}
+
+.pipeline-page .toolbar > *,
+.pipeline-page .schema-fields,
+.pipeline-page .field select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.editor-modal {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  color: var(--text);
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.editor-modal:not([open]) {
+  display: none;
+}
+
+.editor-modal.layer-workbench {
+  --layer-library-width: clamp(148px, 21vw, 236px);
+  padding: 0;
+  gap: 0;
+}
+
+.layer-workbench .layer-summary:not(:empty) {
+  flex: 1 1 13rem;
+  min-width: 0;
+}
+
+.layer-workspace {
+  flex: 1 0 220px;
+  min-height: 0;
+  display: grid;
+  grid-template: minmax(0, 1fr) / var(--layer-library-width) minmax(0, 1fr);
+}
+
+.layer-library {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid #cad4e3;
+  background: var(--surface);
+}
+
+.layer-library-controls {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.layer-library-controls h3 {
+  font-size: .95rem;
+}
+
+.layer-library-controls :is(input, select) {
+  min-width: 0;
+  width: 100%;
+  min-height: 34px;
+  font-size: .85rem;
+  padding: 5px 7px;
+}
+
+.layer-insertion-context {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 5px 6px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+
+.layer-library-results {
+  overflow: auto;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 10px 12px;
+  overscroll-behavior: contain;
+}
+
+.layer-library .palette-item {
+  background: transparent;
+  border-color: transparent;
+}
+
+.layer-library .palette-item:hover:not(:disabled),
+.layer-library .palette-item:focus-visible {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.graph-surface.canvas {
+  --graph-dot: #c3ccdc;
+  --graph-edge: #7a8aa3;
+  --xy-edge-stroke-default: var(--graph-edge);
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-edge-stroke-width-default: 1.75;
+  position: relative;
+  flex: 1 0 220px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: #f0f3f9;
+}
+
+.graph-surface .react-flow {
+  --xy-background-color: #f0f3f9;
+}
+
+.graph-tools,
+.graph-caption,
+.graph-feedback {
+  position: absolute;
+  z-index: 6;
+}
+
+.graph-tools {
+  inset: 12px auto auto 12px;
+  max-width: calc(100% - 24px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.graph-tools:empty {
+  display: none;
+}
+
+.graph-tools .button {
+  padding: 5px 8px;
+  min-height: 32px;
+  font-size: .82rem;
+  background: var(--surface);
+  box-shadow: 0 2px 6px rgb(23 36 59 / 9%);
+}
+
+.graph-tools .graph-icon-button {
+  width: 32px;
+  padding: 0;
+}
+
+.graph-caption,
+.graph-feedback {
+  pointer-events: none;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: .75rem;
+}
+
+.graph-caption {
+  inset: auto 10px 24px auto;
+}
+
+.graph-feedback {
+  inset: auto 10px 54px auto;
+  max-width: calc(100% - 62px);
+}
+
+.graph-feedback.visually-hidden {
+  padding: 0;
+  border: 0;
+}
+
+.graph-surface .canvas-card {
+  --node-tint: #e7edff;
+  --node-ink: #384fa6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 174px;
+  min-width: 0;
+  max-width: none;
+  padding: 8px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 2px 5px rgb(23 36 59 / 8%);
+}
+
+.graph-surface .canvas-card.layer-node {
+  width: 200px;
+}
+
+.canvas-card[data-tone="dataset"],
+.canvas-card[data-tone="shape"] {
+  --node-tint: #ddf6f1;
+  --node-ink: #15695b;
+}
+
+.canvas-card[data-tone="transforms"],
+.canvas-card[data-tone="activation"],
+.canvas-card[data-tone="merge"] {
+  --node-tint: #f0e9ff;
+  --node-ink: #654192;
+}
+
+.canvas-card[data-tone="trainer"],
+.canvas-card[data-tone="pooling"] {
+  --node-tint: #fff1d9;
+  --node-ink: #854d0e;
+}
+
+.canvas-card[data-tone="evaluator"],
+.canvas-card[data-tone="normalization"] {
+  --node-tint: #e3f4e7;
+  --node-ink: #25643a;
+}
+
+.canvas-card-icon {
+  flex: 0 0 16px;
+  color: var(--node-ink);
+}
+
+.canvas-card-body {
+  min-width: 0;
+}
+
+.canvas-card .flow-node-detail {
+  font-size: .73rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.canvas-card .canvas-output {
+  width: fit-content;
+  padding: 1px 5px;
+  font-size: .64rem;
+  color: var(--node-ink);
+  background: var(--node-tint);
+}
+
+.graph-surface .react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--graph-edge);
+  background: var(--surface);
+}
+
+.graph-surface .react-flow__node:focus-visible .canvas-card,
+.graph-surface .canvas-card:hover {
+  border-color: var(--accent);
+}
+
+.editor-modal .field select,
+.editor-modal .field input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.layer-connections summary {
+  min-height: 32px;
+}
+
+.node-warnings {
+  margin-inline-start: auto;
+}
+
+.node-warning-trigger {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  color: var(--error);
+  background: var(--surface);
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.node-warning-popover {
+  position: fixed;
+  inset: auto;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  width: min(290px, calc(100vw - 24px));
+  max-height: min(320px, 55vh);
+  overflow: auto;
+  margin: 6px;
+  padding: 12px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: .9rem;
+  font-weight: 400;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+}
+
+.node-warning-popover ul {
+  margin: 8px 0 0;
+  padding-inline-start: 18px;
+}
+
+.node-warning-popover .button {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.graph-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.layer-edge-add {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.layer-edge-add:hover,
+.layer-edge-add[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.graph-picker .layer-option-group h4 {
+  margin: 8px 0 4px;
+  font-size: .85rem;
+  text-transform: capitalize;
+}
+
+.graph-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-picker .palette-item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.layer-connections {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.graph-item-panel {
+  position: fixed;
+  inset: auto;
+  right: 8px;
+  margin: 0;
+  width: 340px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 8px 26px rgb(23 36 59 / 18%);
+}
+
+.layer-workbench .graph-item-panel {
+  width: min(340px, calc(100% - var(--layer-library-width) - 16px));
+}
+
+.graph-item-panel:popover-open {
+  animation: graph-dock-in 150ms ease-out both;
+}
+
+.graph-item-panel .field,
+.graph-item-panel .fieldset,
+.graph-item-panel .inline-form > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.graph-item-panel .button {
+  align-self: flex-start;
+}
+
+.graph-item-panel:not(:popover-open) {
+  display: none;
+}
+
+@keyframes graph-dock-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-item-panel:popover-open { animation: none; }
+}
+
+@media (max-width: 480px) {
+  .editor-modal.layer-workbench {
+    --layer-library-width: min(41%, 158px);
+  }
+
+  .layer-library-controls,
+  .layer-library-results {
+    padding: 8px;
+  }
+}

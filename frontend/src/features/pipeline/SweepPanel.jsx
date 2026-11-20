@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 const PRESETS = [
   { label: "Learning rate", path: "trainer.optimizer.lr", values: "0.01, 0.001, 0.0001" },
@@ -24,12 +24,12 @@ function parseValues(text) {
 }
 
 /** Many runs of the saved pipeline with chosen values changed; the results open on Compare. */
-export default function SweepPanel({ tiers, onStart, onClose }) {
+export default function SweepPanel({ tiers, onStart }) {
   const [rows, setRows] = useState([{ ...PRESETS[0] }]);
   const [folds, setFolds] = useState("");
   const [mode, setMode] = useState("grid");
   const [maxRuns, setMaxRuns] = useState(16);
-  const [tier, setTier] = useState(tiers[0]?.name || "cpu");
+  const [tier, setTier] = useState(tiers.find((item) => item.available !== false)?.name || "cpu");
   const [busy, setBusy] = useState(false);
 
   const parameters = [
@@ -45,13 +45,7 @@ export default function SweepPanel({ tiers, onStart, onClose }) {
   const setRow = (index, changes) => setRows(rows.map((row, i) => (i === index ? { ...row, ...changes } : row)));
 
   return (
-    <section className="panel sweep-panel" aria-label="Sweep">
-      <div className="list-item-header">
-        <h2>Sweep</h2>
-        <button type="button" className="icon-button" aria-label="close" onClick={onClose}>
-          <X size={16} aria-hidden="true" />
-        </button>
-      </div>
+    <div className="stack sweep-panel">
       <p className="muted small">
         Runs the saved version once per combination. A path is a node and a field, e.g. <code>trainer.optimizer.lr</code>.
       </p>
@@ -91,8 +85,9 @@ export default function SweepPanel({ tiers, onStart, onClose }) {
           <span>Hardware</span>
           <select value={tier} onChange={(e) => setTier(e.target.value)}>
             {tiers.map((item) => (
-              <option key={item.name} value={item.name}>
+              <option key={item.name} value={item.name} title={item.reason || undefined} disabled={item.available === false}>
                 {item.name}
+                {item.available === false ? " · needs a CUDA environment" : ""}
               </option>
             ))}
           </select>
@@ -113,6 +108,6 @@ export default function SweepPanel({ tiers, onStart, onClose }) {
           Start {mode === "grid" ? runs : Math.min(runs, maxRuns)} runs
         </button>
       </div>
-    </section>
+    </div>
   );
 }

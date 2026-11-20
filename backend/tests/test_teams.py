@@ -38,7 +38,9 @@ async def test_team_members_share_sandboxes_datasets_and_runs(client, register):
     )
     sandbox = (
         await client.post(
-            "/v1/sandboxes", json={"name": "shared", "team_id": team["id"]}, headers=alice
+            "/v1/sandboxes",
+            json={"name": "shared", "template": "pytorch-cuda12", "team_id": team["id"]},
+            headers=alice,
         )
     ).json()
     dataset = (
@@ -78,6 +80,14 @@ async def test_team_members_share_sandboxes_datasets_and_runs(client, register):
     assert alice_sees_run.status_code == 200
     assert bob_delete.status_code == 404  # members use, owners delete
     assert usage.status_code == 200 and usage.json()["total_units"] == 0
+
+    dataset_url = f"/v1/datasets/{dataset['id']}"
+    assert (await client.delete(dataset_url, headers=bob)).status_code == 404
+    assert (await client.delete(dataset_url, headers=alice)).status_code == 204
+    assert (await client.get(dataset_url, headers=bob)).status_code == 404
+    assert (await client.post(f"{dataset_url}/restore", headers=bob)).status_code == 404
+    assert (await client.post(f"{dataset_url}/restore", headers=alice)).status_code == 200
+    assert (await client.get(dataset_url, headers=bob)).status_code == 200
 
     await client.post(f"/v1/runs/{run['id']}/cancel", headers=bob)
     removed = await client.delete(f"/v1/teams/{team['id']}/members/{bob_user['id']}", headers=alice)

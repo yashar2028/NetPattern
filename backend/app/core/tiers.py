@@ -45,6 +45,23 @@ def tiers() -> dict[str, Tier]:
     return {name: Tier(name=name, **values) for name, values in raw.items()}
 
 
+# Environment templates whose PyTorch build can use a GPU. CPU tiers run in any template (a CUDA
+# build falls back to the CPU), but a GPU tier in a CPU-only template would bill for a GPU the
+# job cannot use.
+GPU_TEMPLATES = frozenset({"pytorch-cuda12"})
+
+
+def tier_problem(tier: str, template: str) -> str | None:
+    """Why `tier` cannot run in the `template` environment, or None if it can."""
+    found = tiers().get(tier)
+    if found is not None and found.gpus and template not in GPU_TEMPLATES:
+        return (
+            f"the '{tier}' tier has a GPU, but the '{template}' environment cannot use it; "
+            "pick a CPU tier or a sandbox with a CUDA environment"
+        )
+    return None
+
+
 def rate(tier: str) -> float:
     """Unknown (old) tiers cost one unit per second."""
     found = tiers().get(tier)

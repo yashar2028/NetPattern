@@ -84,6 +84,8 @@ export default function SandboxPage() {
 
       <section className="section">
         <h2>Pipelines</h2>
+        <details className="compact-disclosure">
+        <summary>New pipeline</summary>
         <form className="panel inline-form" onSubmit={newPipeline}>
           <label className="field grow">
             <span>New pipeline</span>
@@ -103,6 +105,7 @@ export default function SandboxPage() {
             <Plus size={16} aria-hidden="true" /> {busy ? "Creating…" : "Create"}
           </button>
         </form>
+        </details>
         {pipelines.length === 0 && <p className="muted small">Create a pipeline to choose a starting model and open the editor.</p>}
         <div className="card-grid">
           {pipelines.map((pipeline) => (
@@ -134,6 +137,7 @@ export default function SandboxPage() {
         {runs.length === 0 ? (
           <p className="muted">No runs yet. Open a pipeline and press Run.</p>
         ) : (
+          <div className="table-scroll compact-list" role="region" aria-label="Recent sandbox runs" tabIndex={0}>
           <table className="table">
             <thead>
               <tr>
@@ -175,6 +179,7 @@ export default function SandboxPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>

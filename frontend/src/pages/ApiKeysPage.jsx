@@ -56,6 +56,8 @@ export default function ApiKeysPage() {
           </p>
         </div>
       </header>
+      <details className="compact-disclosure">
+      <summary>New API key</summary>
       <form className="panel inline-form" onSubmit={create}>
         <label className="field grow">
           <span>Name</span>
@@ -85,6 +87,7 @@ export default function ApiKeysPage() {
           <KeyRound size={16} aria-hidden="true" /> Create key
         </button>
       </form>
+      </details>
       {error && <p className="error" role="alert">{error}</p>}
       {created && (
         <div className="panel" role="status">
@@ -96,6 +99,7 @@ export default function ApiKeysPage() {
       {keys === null && !error && <p className="muted">Loading API keys…</p>}
       {keys?.length === 0 && <div className="empty-state"><KeyRound size={24} aria-hidden="true" /><strong>No API keys yet</strong><p>Create an inference key above to use your deployed models from another application.</p></div>}
       {keys?.length > 0 && (
+        <div className="table-scroll compact-list" role="region" aria-label="API key list" tabIndex={0}>
         <table className="table">
           <thead>
             <tr>
@@ -133,6 +137,7 @@ export default function ApiKeysPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

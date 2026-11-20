@@ -92,13 +92,8 @@ export default function SandboxesPage() {
         )}
       </header>
 
-      <section className="journey" aria-label="Your workflow">
-        <div><span>01</span><strong>Set up</strong><small>Name your workspace</small></div>
-        <div><span>02</span><strong>Add data</strong><small>Upload your images</small></div>
-        <div><span>03</span><strong>Build &amp; train</strong><small>Configure your pipeline</small></div>
-        <div><span>04</span><strong>Deploy</strong><small>Put your model to work</small></div>
-      </section>
-
+      <details className="compact-disclosure">
+      <summary>New project</summary>
       <form className="panel creation-form" onSubmit={create}>
         <div className="creation-heading">
           <div className="feature-icon"><Plus size={20} aria-hidden="true" /></div>
@@ -160,6 +155,7 @@ export default function SandboxesPage() {
         </button>
         </div>
       </form>
+      </details>
 
       {error && <p className="error" role="alert">{error}</p>}
       {warnings.map((warning) => <p className="error small" role="alert" key={warning}>{warning}</p>)}
@@ -168,7 +164,7 @@ export default function SandboxesPage() {
         <div><h2>Your sandboxes</h2><p className="muted small">Return to a project or compare its runs.</p></div>
         <Link className="button" to="/datasets"><Database size={16} aria-hidden="true" /> Manage datasets</Link>
       </div>
-      {sandboxes?.length === 0 && <div className="empty-state"><Workflow size={24} aria-hidden="true" /><strong>Your projects will appear here</strong><p>Start with the form above, or <Link to="/datasets">add a dataset</Link> first.</p></div>}
+      {sandboxes?.length === 0 && <div className="empty-state"><Workflow size={24} aria-hidden="true" /><strong>Your projects will appear here</strong><p>Use New project above, or <Link to="/datasets">add a dataset</Link> first.</p></div>}
 
       <div className="card-grid">
         {sandboxes?.map((sandbox) => (

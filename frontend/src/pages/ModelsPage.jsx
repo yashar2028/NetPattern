@@ -68,7 +68,9 @@ export default function ModelsPage() {
           <p className="muted small">
             <code>{model.id}</code> · created {formatDate(model.created_at)}
           </p>
-          <div className="table-scroll">
+          <details className="compact-disclosure">
+          <summary>Versions ({model.versions.length})</summary>
+          <div className="table-scroll compact-list" role="region" aria-label="Model version list" tabIndex={0}>
             <table className="table">
               <thead>
                 <tr>
@@ -120,6 +122,7 @@ export default function ModelsPage() {
               </tbody>
             </table>
           </div>
+          </details>
         </section>
       ))}
     </div>

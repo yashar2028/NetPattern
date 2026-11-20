@@ -67,6 +67,8 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 ## Use the app
 
 Open http://localhost:5173 and create an account (or sign in).
+Use **Workspace** to switch between project areas and **Account** to sign out.
+Creation forms, run options, and history expand on demand; pipeline Task settings remain visible.
 
 1. **Datasets**: create a dataset and upload a zip of your image folder. Each upload is a new
    version; "Profile" checks class counts, image sizes and problems.
@@ -91,6 +93,24 @@ Open http://localhost:5173 and create an account (or sign in).
    software. **Teams** share sandboxes and datasets with colleagues.
 
 The first time a sandbox opens in the editor its environment starts, which can take a minute.
+The status row shows engine startup and whether the pipeline is ready to run. Retry engine startup
+from there if it fails. **Task settings** are visible in a compact strip above the pipeline canvas.
+Both canvases fill the remaining workspace. Select a step, layer, or connection to open
+its settings on the right; the graph stays in place. Press Escape or
+click outside to close the panel. Panel motion follows the system's reduced-motion preference.
+When a pipeline step is missing, **Add step** opens a picker: choose the step or drag it to the canvas.
+In both the pipeline and layer editors, boxes stay within the visible canvas while you drag them.
+Pan the background or zoom out for more room. Use **Fit View** to find boxes already off-screen.
+In the layer editor, **Add layer** stays on the left. Search by name or purpose, filter by category,
+and choose or drag a layer. Select **+** on a connection to insert a layer there using the same
+picker. Click a node or connection (or focus it and press Enter or Space) to open its settings.
+**Input** holds the input shape; layer settings contain parameters, connections, movement and
+output selection. A connection’s menu lets you insert a layer or disconnect just that edge.
+Escape or a click outside dismisses settings without closing the editor.
+**Auto-arrange** lays out the current graph without changing connections; **Jump to selected layer**
+centers the selected layer without moving any boxes. Open a node's warning badge to see what
+needs attention and jump to a related setting. You can save a draft with model issues, but fix confirmed
+issues before running it.
 
 ## Use the API
 
@@ -107,16 +127,32 @@ Interactive docs: http://localhost:8000/docs (OpenAPI at `/v1/openapi.json`).
 6. Follow it with `GET /v1/runs/{id}/events/stream` (Server-Sent Events), then read
    `GET /v1/runs/{id}`, `GET /v1/runs` and `GET /v1/usage` (compute units = tier rate × seconds,
    see `GET /v1/hardware-tiers`).
-7. `POST /v1/models` with `{"run_id": …, "name": …}`, then `POST /v1/deployments` with
-   `{"model_version_id": …, "name": …, "mode": "serverless" | "dedicated"}`.
-8. Call it with an inference key (`POST /v1/api-keys` with `"scope": "inference"`):
+7. Download the trained weights with `GET /v1/runs/{id}/checkpoints/best` (or `last`).
+8. Predict with a completed training run: `POST /v1/runs/{id}/predict` (multipart) with image
+   files in `files`, or a `dataset_version_id` (plus optional `subpath`). It starts a `predict`
+   run in the training run's environment; its result lists one prediction per image, and
+   segmentation masks are at `GET /v1/runs/{predict run id}/predictions/{file}`.
+9. To serve a model, `POST /v1/models` with `{"run_id": …, "name": …}`, then `POST /v1/deployments`
+   with `{"model_version_id": …, "name": …, "mode": "serverless" | "dedicated"}`.
+10. Call the deployment with an inference key (`POST /v1/api-keys` with `"scope": "inference"`):
 
-   ```bash
-   curl -X POST http://localhost:8000/v1/deployments/<dep_id>/predict \
-     -H "Authorization: Bearer $NETPATTERN_API_KEY" -F "files=@image.png"
-   ```
+    ```bash
+    curl -X POST http://localhost:8000/v1/deployments/<dep_id>/predict \
+      -H "Authorization: Bearer $NETPATTERN_API_KEY" -F "files=@image.png"
+    ```
 
-   or from Python with the SDK in `sdk/python` (`Client().predict("dep_…", ["image.png"])`).
+    Or use the Python SDK in `sdk/python` (`Client().predict("dep_…", ["image.png"])`).
+
+A training run interrupted by a worker crash is retried once and continues from its last
+completed epoch. A dataset cannot be deleted while queued or running runs use it, and reruns
+fail with `inputs_missing` when their data has been deleted.
+
+Deleting a dataset (`DELETE /v1/datasets/{id}`) or one version
+(`DELETE /v1/datasets/{id}/versions/{n}`) is a soft delete: list deleted datasets with
+`GET /v1/datasets?deleted=true` (deleted versions with `GET /v1/datasets/{id}?include_deleted=true`)
+and undo it with `POST …/restore` for `DATASET_RETENTION_DAYS` (30 by default). After that the
+worker removes the files. Images uploaded for predictions are kept for
+`PREDICT_INPUTS_RETENTION_DAYS` (30 by default).
 
 ## Train from the worker CLI (no account needed; for development)
 

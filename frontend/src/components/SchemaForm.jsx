@@ -44,15 +44,16 @@ function ObjectFields({ schema, root, value, onChange, hidden = [] }) {
   return (
     <div className="schema-fields">
       {properties.map(([key, property]) => (
-        <Field
-          key={key}
-          name={key}
-          schema={property}
-          root={root}
-          required={required.has(key)}
-          value={value[key]}
-          onChange={(next) => onChange(setKey(value, key, next))}
-        />
+        <div key={key} className="schema-field-entry" data-schema-field={key} style={{ display: "contents" }}>
+          <Field
+            name={key}
+            schema={property}
+            root={root}
+            required={required.has(key)}
+            value={value[key]}
+            onChange={(next) => onChange(setKey(value, key, next))}
+          />
+        </div>
       ))}
     </div>
   );
@@ -233,7 +234,7 @@ function OptionalObject({ name, schema, root, value, onChange }) {
   );
 }
 
-/** Source code (code block layers): a monospace text area, Tab inserts spaces. */
+/** Source code (code block layers): use a monospace text area with standard focus navigation. */
 function CodeField({ label, value, onChange }) {
   return (
     <label className="field">
@@ -244,14 +245,6 @@ function CodeField({ label, value, onChange }) {
         spellCheck={false}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          event.preventDefault();
-          const { selectionStart, selectionEnd, value: text } = event.target;
-          const next = `${text.slice(0, selectionStart)}    ${text.slice(selectionEnd)}`;
-          onChange(next);
-          requestAnimationFrame(() => event.target.setSelectionRange(selectionStart + 4, selectionStart + 4));
-        }}
       />
     </label>
   );

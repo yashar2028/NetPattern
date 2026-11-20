@@ -1,5 +1,9 @@
 """Sweeps: each combination becomes a labeled training run with the patched spec."""
 
+import io
+import zipfile
+from copy import deepcopy
+
 import pytest
 from sqlalchemy import select
 
@@ -38,13 +42,52 @@ def test_paths_patch_nested_params_and_grids_have_a_limit():
     assert "more than max_runs" in caught.value.detail
 
 
-async def test_a_sweep_starts_one_labeled_run_per_combination(client, register):
+async def test_a_gpu_sweep_needs_a_cuda_environment(client, register):
     headers, _ = await register()
     sandbox = (await client.post("/v1/sandboxes", json={"name": "s"}, headers=headers)).json()
+
+    response = await client.post(
+        f"/v1/sandboxes/{sandbox['id']}/sweeps",
+        json={
+            "pipeline_version_id": "unused",
+            "parameters": [{"path": "trainer.batch_size", "values": [8, 16]}],
+            "hardware_tier": "gpu",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422 and "CUDA" in response.json()["detail"]
+
+
+async def test_a_sweep_starts_one_labeled_run_per_combination(client, register):
+    headers, _ = await register()
+    sandbox = (
+        await client.post(
+            "/v1/sandboxes", json={"name": "s", "template": "pytorch-cuda12"}, headers=headers
+        )
+    ).json()
+    dataset = (
+        await client.post("/v1/datasets", json={"name": "sweep-data"}, headers=headers)
+    ).json()
+    dataset_url = f"/v1/datasets/{dataset['id']}"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("class/sample.png", b"sample")
+    uploaded = await client.post(
+        f"{dataset_url}/versions",
+        files={"file": ("sample.zip", archive.getvalue(), "application/zip")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    spec = deepcopy(SPEC)
+    spec["nodes"][0]["params"] = {
+        "format": "image_folder",
+        "dataset_version_id": uploaded.json()["id"],
+    }
     pipeline = (
         await client.post(
             f"/v1/sandboxes/{sandbox['id']}/pipelines",
-            json={"name": "p", "spec": SPEC},
+            json={"name": "p", "spec": spec},
             headers=headers,
         )
     ).json()
@@ -92,5 +135,8 @@ async def test_a_sweep_starts_one_labeled_run_per_combination(client, register):
     assert unknown_node.status_code == 422 and "no evaluator node" in unknown_node.json()["detail"]
     listed = (await client.get(f"/v1/sandboxes/{sandbox['id']}/sweeps", headers=headers)).json()
     assert [s["id"] for s in listed] == [sweep["id"]]
+    blocked = await client.delete(dataset_url, headers=headers)
+    assert blocked.status_code == 409 and blocked.json()["code"] == "dataset_in_use"
     for run in sweep["runs"]:
         await client.post(f"/v1/runs/{run['id']}/cancel", headers=headers)
+    assert (await client.delete(dataset_url, headers=headers)).status_code == 204
