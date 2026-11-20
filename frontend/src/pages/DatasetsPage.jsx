@@ -14,19 +14,24 @@ export default function DatasetsPage() {
   const [teamId, setTeamId] = useState("");
   const [teams, setTeams] = useState([]);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     listDatasets().then(setDatasets).catch((caught) => setError(errorMessage(caught)));
-    listTeams().then(setTeams).catch(() => {});
+    listTeams().then(setTeams).catch((caught) => setError(`Could not load teams: ${errorMessage(caught)}`));
   }, []);
 
   const create = async (event) => {
     event.preventDefault();
+    setBusy(true);
+    setError("");
     try {
       const dataset = await createDataset({ name, team_id: teamId || null });
       navigate(`/datasets/${dataset.id}`);
     } catch (caught) {
       setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -34,10 +39,12 @@ export default function DatasetsPage() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Datasets</h1>
+          <p className="eyebrow">Your data</p><h1>Datasets</h1>
           <p className="muted">Upload a zip of your image folder. Every upload becomes a version that never changes.</p>
         </div>
       </header>
+      <details className="compact-disclosure">
+      <summary>New dataset</summary>
       <form className="panel inline-form" onSubmit={create}>
         <label className="field grow">
           <span>New dataset</span>
@@ -56,12 +63,14 @@ export default function DatasetsPage() {
             </select>
           </label>
         )}
-        <button className="button primary" type="submit">
-          <Plus size={16} aria-hidden="true" /> Create
+        <button className="button primary" type="submit" disabled={busy}>
+          <Plus size={16} aria-hidden="true" /> {busy ? "Creating…" : "Create dataset"}
         </button>
       </form>
+      </details>
       {error && <p className="error" role="alert">{error}</p>}
-      {datasets?.length === 0 && <p className="muted">No datasets yet.</p>}
+      {datasets === null && !error && <p className="muted">Loading datasets…</p>}
+      {datasets?.length === 0 && <div className="empty-state"><Database size={24} aria-hidden="true" /><strong>No datasets yet</strong><p>Use New dataset above, then upload a zip of your images.</p></div>}
       <div className="card-grid">
         {datasets?.map((dataset) => (
           <Link key={dataset.id} className="card card-link" to={`/datasets/${dataset.id}`}>

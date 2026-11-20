@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Loader2, Play, Repeat, Save } from "lucide-react";
+import { Loader2, Play, Repeat, Save, SlidersHorizontal } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 
 import { errorIssues, errorMessage } from "../api/client";
@@ -18,12 +18,16 @@ import {
   startSweep,
 } from "../api/sandboxesApi";
 import SchemaForm from "../components/SchemaForm";
+import GraphItemPanel from "../features/pipeline/GraphItemPanel";
 import LayerEditor from "../features/pipeline/LayerEditor";
 import ModelLayers from "../features/pipeline/ModelLayers";
 import { DatasetForm, EvaluatorForm, ModelForm, TransformsForm } from "../features/pipeline/NodeForms";
 import SweepPanel from "../features/pipeline/SweepPanel";
-import PipelineCanvas, { PipelinePalette } from "../features/pipeline/PipelineCanvas";
+import PipelineCanvas from "../features/pipeline/PipelineCanvas";
 import { NODE_BY_TYPE, defaultSpec } from "../features/pipeline/defaults";
+import { blocksRun } from "../features/pipeline/layerGraph";
+import useModelValidation from "../features/pipeline/useModelValidation";
+import "../features/pipeline/editor.css";
 
 function NodePanel({ node, spec, schema, datasets, sandboxId, onParams, onOpenLayers }) {
   const props = { params: node.params || {}, onChange: onParams, schemas: schema.schemas };
@@ -47,12 +51,7 @@ function NodePanel({ node, spec, schema, datasets, sandboxId, onParams, onOpenLa
     default:
       form = null;
   }
-  return (
-    <aside className="side-panel" aria-label={`${node.type} settings`}>
-      <h3>{NODE_BY_TYPE[node.type]?.label}</h3>
-      {form}
-    </aside>
-  );
+  return form;
 }
 
 export default function PipelinePage() {
@@ -64,15 +63,33 @@ export default function PipelinePage() {
   const [spec, setSpecState] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [schema, setSchema] = useState(null);
-  const [schemaError, setSchemaError] = useState("");
+  const [schemaFailure, setSchemaFailure] = useState(null);
+  const [schemaAttempt, setSchemaAttempt] = useState(0);
   const [datasets, setDatasets] = useState([]);
   const [tiers, setTiers] = useState([{ name: "cpu", cpus: 2, gpus: 0, rate: 1 }]);
   const [selected, setSelected] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
-  const [sweepOpen, setSweepOpen] = useState(false);
+  const [initialIssue, setInitialIssue] = useState(null);
+  const [panel, setPanel] = useState(null);
   const [runOptions, setRunOptions] = useState({ kind: "train", hardware_tier: "cpu" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const headingRef = useRef(null);
+  const workspace = useRef(null);
+  const layerReturnFocus = useRef(null);
+  const runOptionsButton = useRef(null);
+
+  const activatePanel = (kind, id, anchor) => {
+    if (kind === "node") setSelected(id);
+    setPanel({ kind, id, anchor });
+  };
+  const dismissPanel = (restore) => {
+    setPanel(null);
+    if (restore) {
+      const anchor = panel?.anchor;
+      requestAnimationFrame(() => (anchor?.isConnected ? anchor : headingRef.current)?.focus({ preventScroll: true }));
+    }
+  };
 
   const setSpec = useCallback((update) => {
     setSpecState((current) => (typeof update === "function" ? update(current) : update));
@@ -86,6 +103,7 @@ export default function PipelinePage() {
       setSpecState(loaded.spec);
       setDirty(false);
       setSelected(null);
+      setPanel(null);
     },
     [pipelineId]
   );
@@ -115,8 +133,38 @@ export default function PipelinePage() {
 
   // The forms come from the sandbox's own engine; the first call may start the environment.
   useEffect(() => {
-    sessionCall(sandboxId, "schema").then(setSchema).catch((caught) => setSchemaError(errorMessage(caught)));
-  }, [sandboxId]);
+    let active = true;
+    sessionCall(sandboxId, "schema")
+      .then((result) => active && setSchema({ sandboxId, result }))
+      .catch((caught) => active && setSchemaFailure({ sandboxId, message: errorMessage(caught) }));
+    return () => { active = false; };
+  }, [sandboxId, schemaAttempt]);
+
+  const engineSchema = schema?.sandboxId === sandboxId ? schema.result : null;
+  const schemaError = schemaFailure?.sandboxId === sandboxId ? schemaFailure.message : "";
+  const retryEngine = () => {
+    setSchemaFailure(null);
+    setSchemaAttempt((attempt) => attempt + 1);
+  };
+  const modelNode = spec?.nodes.find((node) => node.type === "model");
+  const architecture = modelNode?.params?.architecture;
+  const custom = architecture?.kind === "graph";
+  const taskType = spec?.task.type;
+  const knownOutputs = taskType === "regression" ? spec?.task.targets?.length : spec?.task.classes?.length;
+  const validation = useModelValidation(sandboxId, architecture, taskType, knownOutputs, Boolean(engineSchema && custom));
+  const issues = validation.analysis?.issues || [];
+  const confirmedIssues = issues.filter((issue) => blocksRun(issue, validation.analysis.output_shape, taskType, knownOutputs));
+  const datasetNode = spec?.nodes.find((node) => node.type === "dataset");
+  const needsDataset = !datasetNode || (datasetNode.params?.format !== "synthetic" && !datasetNode.params?.dataset_version_id);
+  const modelBlock = custom && (!architecture.nodes?.length || confirmedIssues.length > 0);
+  const runBlocked = !engineSchema || validation.checking || modelBlock || !modelNode || needsDataset;
+  const openLayers = (issue = null) => {
+    const id = modelNode?.id;
+    layerReturnFocus.current = (id && workspace.current?.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`))
+      || headingRef.current;
+    setInitialIssue(issue);
+    setLayersOpen(true);
+  };
 
   const save = async () => {
     const saved = await saveVersion(pipelineId, spec);
@@ -138,12 +186,8 @@ export default function PipelinePage() {
     }
   };
 
-  // Catch the common mistake before it becomes a failed run.
   const runnable = () => {
-    const architecture = spec.nodes.find((node) => node.type === "model")?.params?.architecture;
-    if (architecture?.kind === "graph" && !architecture.nodes?.length) {
-      throw new Error("The model has no layers yet. Open the layer editor and add layers, or use a zoo model.");
-    }
+    if (runBlocked) throw new Error("Resolve the pipeline readiness checks before running.");
   };
 
   const run = () =>
@@ -171,9 +215,29 @@ export default function PipelinePage() {
     return <p className={`page-message ${error ? "error" : "muted"}`}>{error?.message || "Loading…"}</p>;
   }
 
-  const selectedNode = spec.nodes.find((node) => node.id === selected);
-  const modelNode = spec.nodes.find((node) => node.type === "model");
-  const architecture = modelNode?.params?.architecture;
+  const panelNode = panel?.kind === "node" && spec.nodes.find((node) => node.id === panel.id);
+  const panelEdge = panel?.kind === "edge" && spec.edges.find(([source, target]) => `${source}->${target}` === panel.id);
+  const stepLabel = (id) => NODE_BY_TYPE[spec.nodes.find((node) => node.id === id)?.type]?.label || id;
+  const warningsByNode = new Map();
+  if (engineSchema && needsDataset && datasetNode) {
+    warningsByNode.set(datasetNode.id, [{
+      message: "Choose a dataset version or use synthetic data.",
+      action: "Open dataset settings",
+      select: datasetNode.id,
+    }]);
+  }
+  if (engineSchema && modelNode && custom) {
+    const modelWarnings = issues.map((issue) => ({
+      message: `${issue.node_id || "Model"}${issue.field ? ` · ${issue.field}` : ""}: ${issue.message}${
+        confirmedIssues.includes(issue) ? "" : " (Preview only; training uses the task and selected dataset.)"}`,
+      action: "Open layer editor",
+      issue,
+    }));
+    if (!architecture.nodes?.length && !modelWarnings.length) {
+      modelWarnings.push({ message: "The model has no layers.", action: "Add model layers", issue: null });
+    }
+    warningsByNode.set(modelNode.id, modelWarnings);
+  }
   const setNodeParams = (id, params) =>
     setSpec((current) => ({
       ...current,
@@ -182,12 +246,12 @@ export default function PipelinePage() {
 
   return (
     <div className="pipeline-page">
-      <header className="page-header">
+      <header className="page-header graph-header">
         <div>
           <p className="muted small">
             <Link to="/sandboxes">Sandboxes</Link> / <Link to={`/sandboxes/${sandboxId}`}>sandbox</Link> /
           </p>
-          <h1>{pipeline.name}</h1>
+          <h1 ref={headingRef} tabIndex={-1}>{pipeline.name}</h1>
         </div>
         <div className="toolbar">
           <label className="field inline">
@@ -201,46 +265,20 @@ export default function PipelinePage() {
               ))}
             </select>
           </label>
-          {dirty && <span className="badge badge-queued">unsaved changes</span>}
+          <span className={`badge${dirty ? " badge-queued" : ""}`} role="status">{dirty ? "Unsaved changes" : version ? "Pipeline saved" : "No saved version"}</span>
           <button type="button" className="button" disabled={busy || !dirty} onClick={() => act(save)}>
             <Save size={16} aria-hidden="true" /> Save
           </button>
-          <select
-            aria-label="Run kind"
-            value={runOptions.kind}
-            onChange={(event) => setRunOptions({ ...runOptions, kind: event.target.value })}
-          >
-            <option value="train">train</option>
-            <option value="sanity">sanity check (one batch)</option>
-            <option value="lr_find">learning-rate finder</option>
-          </select>
-          <select
-            aria-label="Hardware"
-            value={runOptions.hardware_tier}
-            onChange={(event) => setRunOptions({ ...runOptions, hardware_tier: event.target.value })}
-          >
-            {tiers.map((tier) => (
-              <option
-                key={tier.name}
-                value={tier.name}
-                title={tier.reason || tier.description}
-                disabled={tier.available === false}
-              >
-                {tier.name} · {tier.cpus} cores{tier.gpus ? ` + ${tier.gpus} GPU` : ""} · {tier.rate} units/s
-                {tier.available === false ? " · needs a CUDA environment" : ""}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="button primary" disabled={busy} onClick={run}>
+          <button type="button" className="button primary" disabled={busy || runBlocked} aria-describedby="pipeline-readiness" onClick={run}>
             <Play size={16} aria-hidden="true" /> Run
           </button>
-          <button type="button" className="button ghost" onClick={() => setSweepOpen(!sweepOpen)}>
-            <Repeat size={16} aria-hidden="true" /> Sweep
+          <button type="button" className="button" ref={runOptionsButton}
+            aria-expanded={panel?.kind === "run" || panel?.kind === "sweep"}
+            onClick={(event) => activatePanel("run", null, event.currentTarget)}>
+            <SlidersHorizontal size={16} aria-hidden="true" /> Run options
           </button>
         </div>
       </header>
-
-      {sweepOpen && <SweepPanel tiers={tiers} onStart={sweep} onClose={() => setSweepOpen(false)} />}
 
       {error && (
         <div className="error-box" role="alert">
@@ -257,62 +295,123 @@ export default function PipelinePage() {
         </div>
       )}
 
-      {!schema ? (
-        <div className="panel">
-          {schemaError ? (
-            <p className="error">The sandbox's engine did not answer: {schemaError}</p>
-          ) : (
-            <p>
-              <Loader2 size={16} className="spin inline-icon" aria-hidden="true" /> Starting this sandbox's engine… the
-              first start can take a minute.
-            </p>
+      <div className="editor-readiness">
+        <div className="editor-status-row">
+          <div id="pipeline-readiness" className="editor-status-copy small" role="status">
+            <strong className={schemaError && !engineSchema ? "error" : ""}>
+              {engineSchema ? "Engine ready." : schemaError ? "Engine startup failed." : (
+                <><Loader2 size={16} className="spin inline-icon" aria-hidden="true" /> Starting the sandbox engine…</>
+              )}
+            </strong>
+            <span className="muted">
+              {!engineSchema ? schemaError || "You can view the pipeline while it starts." :
+                modelBlock ? "Can’t run: check the warnings on the Model node." :
+                validation.checking ? "Checking model…" :
+                !modelNode ? "Can’t run: add a Model step." :
+                needsDataset ? (datasetNode ? "Can’t run: check the Dataset node." : "Can’t run: add a Dataset step.") :
+                validation.error ? "Model precheck is unavailable; training will validate the model." :
+                "Ready to run. Training will check the selected dataset."}
+            </span>
+          </div>
+          {!engineSchema && schemaError && (
+            <button type="button" className="button" onClick={retryEngine}>Retry engine startup</button>
+          )}
+          {engineSchema && validation.error && (
+            <button type="button" className="button" onClick={validation.retry}>Retry model precheck</button>
           )}
         </div>
-      ) : (
-        <>
-          <div className="panel task-bar">
-            <SchemaForm
-              key={version?.id || "new"}
-              schema={schema.schemas.task}
-              value={spec.task}
-              onChange={(task) => setSpec((current) => ({ ...current, task }))}
-            />
-          </div>
-          <ReactFlowProvider>
-            <div className="workspace two-column">
-              <div className="canvas-column">
-                <PipelinePalette spec={spec} />
-                <PipelineCanvas spec={spec} onSpecChange={setSpec} selected={selected} onSelect={setSelected} />
-              </div>
-              {selectedNode ? (
-                <NodePanel
-                  key={`${version?.id}-${selectedNode.id}`}
-                  node={selectedNode}
-                  spec={spec}
-                  schema={schema}
-                  datasets={datasets}
-                  sandboxId={sandboxId}
-                  onParams={(params) => setNodeParams(selectedNode.id, params)}
-                  onOpenLayers={() => setLayersOpen(true)}
-                />
-              ) : (
-                <aside className="side-panel muted">
-                  <p>Select a node to edit its settings.</p>
-                  <p className="small">Data flows Dataset → Transforms → Model → Trainer → Evaluator.</p>
-                </aside>
-              )}
-            </div>
-          </ReactFlowProvider>
-        </>
+      </div>
+      {engineSchema && (
+        <section className="task-bar pipeline-task-settings" aria-labelledby="pipeline-task-heading">
+          <h2 id="pipeline-task-heading">Task settings</h2>
+          <SchemaForm
+            key={version?.id || "new"}
+            schema={engineSchema.schemas.task}
+            value={spec.task}
+            onChange={(task) => setSpec((current) => ({ ...current, task }))}
+          />
+        </section>
+      )}
+      <ReactFlowProvider>
+        <PipelineCanvas spec={spec} onSpecChange={setSpec} selected={selected} onSelect={setSelected}
+          workspace={workspace} panel={panel} onActivate={activatePanel} onDismiss={dismissPanel} fallback={headingRef}
+          warningsByNode={warningsByNode} onWarning={(warning) => {
+            if (warning.select) {
+              const anchor = workspace.current.querySelector(`.react-flow__node[data-id="${CSS.escape(warning.select)}"]`);
+              activatePanel("node", warning.select, anchor);
+            } else {
+              openLayers(warning.issue);
+            }
+          }} />
+      </ReactFlowProvider>
+      {panelNode && (
+        <GraphItemPanel key={panelNode.id} id="pipeline-node-settings" anchor={panel.anchor} workspace={workspace}
+          fallback={headingRef} title={`${stepLabel(panelNode.id)} settings`} onDismiss={dismissPanel}>
+          {engineSchema ? (
+            <NodePanel node={panelNode} spec={spec} schema={engineSchema} datasets={datasets} sandboxId={sandboxId}
+              onParams={(params) => setNodeParams(panelNode.id, params)} onOpenLayers={() => openLayers()} />
+          ) : <p className="muted small">Step settings are available when the engine is ready.</p>}
+        </GraphItemPanel>
+      )}
+      {panelEdge && (
+        <GraphItemPanel key={panel.id} id="pipeline-connection-settings" anchor={panel.anchor} workspace={workspace}
+          fallback={headingRef} title="Connection settings" onDismiss={dismissPanel}>
+          <p>{panelEdge.map(stepLabel).join(" → ")}</p>
+          <button type="button" className="button ghost" onClick={() => {
+            setSpec((current) => ({ ...current, edges: current.edges.filter(([s, t]) => s !== panelEdge[0] || t !== panelEdge[1]) }));
+            dismissPanel(true);
+          }}>Disconnect</button>
+        </GraphItemPanel>
+      )}
+      {panel?.kind === "run" && (
+        <GraphItemPanel id="pipeline-run-settings" anchor={panel.anchor} workspace={workspace}
+          fallback={runOptionsButton} title="Run options" onDismiss={dismissPanel}>
+          <label className="field">Run kind
+            <select value={runOptions.kind} onChange={(event) => setRunOptions({ ...runOptions, kind: event.target.value })}>
+              <option value="train">train</option>
+              <option value="sanity">sanity check (one batch)</option>
+              <option value="lr_find">learning-rate finder</option>
+            </select>
+          </label>
+          <label className="field">Hardware
+            <select value={runOptions.hardware_tier} onChange={(event) => setRunOptions({ ...runOptions, hardware_tier: event.target.value })}>
+              {tiers.map((tier) => (
+                <option
+                  key={tier.name}
+                  value={tier.name}
+                  title={tier.reason || tier.description}
+                  disabled={tier.available === false}
+                >
+                  {tier.name} · {tier.cpus} cores{tier.gpus ? ` + ${tier.gpus} GPU` : ""} · {tier.rate} units/s
+                  {tier.available === false ? " · needs a CUDA environment" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="button" disabled={busy || runBlocked}
+            onClick={() => activatePanel("sweep", null, panel.anchor)}>
+            <Repeat size={16} aria-hidden="true" /> Configure sweep
+          </button>
+        </GraphItemPanel>
+      )}
+      {panel?.kind === "sweep" && !runBlocked && (
+        <GraphItemPanel id="pipeline-sweep-settings" anchor={panel.anchor} workspace={workspace}
+          fallback={runOptionsButton} title="Sweep" onDismiss={dismissPanel}>
+          <SweepPanel tiers={tiers} onStart={sweep} />
+        </GraphItemPanel>
       )}
 
-      {layersOpen && schema && architecture?.kind === "graph" && (
+      {layersOpen && engineSchema && architecture?.kind === "graph" && (
         <LayerEditor
           sandboxId={sandboxId}
           task={spec.task}
           architecture={architecture}
           positions={spec.ui?.layers || {}}
-          ops={schema.capabilities.graph_ops}
+          ops={engineSchema.capabilities.graph_ops}
+          validation={validation}
+          knownOutputs={knownOutputs}
+          initialIssue={initialIssue}
+          fallbackFocus={layerReturnFocus}
           onChange={(nextArchitecture, positions) =>
             setSpec((current) => ({
               ...current,
@@ -330,6 +429,7 @@ export default function PipelinePage() {
           sandboxId={sandboxId}
           task={spec.task}
           architecture={architecture}
+          fallbackFocus={layerReturnFocus}
           onClose={() => setLayersOpen(false)}
         />
       )}

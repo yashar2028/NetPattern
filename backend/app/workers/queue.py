@@ -39,6 +39,7 @@ async def enqueue(
     owner_id: str | None = None,
     sandbox_id: str | None = None,
     pipeline_version_id: str | None = None,
+    dataset_version_ids: list[str] | None = None,
 ) -> Job:
     job = Job(
         kind=kind,
@@ -50,6 +51,7 @@ async def enqueue(
         owner_id=owner_id,
         sandbox_id=sandbox_id,
         pipeline_version_id=pipeline_version_id,
+        dataset_version_ids=dataset_version_ids or [],
     )
     db.add(job)
     await db.flush()

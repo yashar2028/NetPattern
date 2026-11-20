@@ -19,6 +19,7 @@ export default function SandboxPage() {
   const [template, setTemplate] = useState(TEMPLATES[0].id);
   const [error, setError] = useState("");
   const [picked, setPicked] = useState([]);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getSandbox(sandboxId).then(setSandbox).catch((caught) => setError(errorMessage(caught)));
@@ -28,21 +29,29 @@ export default function SandboxPage() {
 
   const newPipeline = async (event) => {
     event.preventDefault();
+    setBusy(true);
+    setError("");
     try {
       const spec = TEMPLATES.find((item) => item.id === template).spec();
       const pipeline = await createPipeline(sandboxId, { name, spec });
       navigate(`/sandboxes/${sandboxId}/pipelines/${pipeline.id}`);
     } catch (caught) {
       setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
     }
   };
 
   const upgrade = async () => {
     if (!window.confirm("Use the newest engine for the next runs? Earlier runs keep their own versions.")) return;
-    setSandbox(await upgradeSandbox(sandboxId));
+    try {
+      setSandbox(await upgradeSandbox(sandboxId));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
   };
 
-  if (error) return <p className="error page-message" role="alert">{error}</p>;
+  if (error && !sandbox) return <p className="error page-message" role="alert">{error}</p>;
   if (!sandbox) return <p className="muted page-message">Loading…</p>;
 
   return (
@@ -71,9 +80,12 @@ export default function SandboxPage() {
           </button>
         )}
       </header>
+      {error && <p className="error" role="alert">{error}</p>}
 
       <section className="section">
         <h2>Pipelines</h2>
+        <details className="compact-disclosure">
+        <summary>New pipeline</summary>
         <form className="panel inline-form" onSubmit={newPipeline}>
           <label className="field grow">
             <span>New pipeline</span>
@@ -89,10 +101,12 @@ export default function SandboxPage() {
               ))}
             </select>
           </label>
-          <button className="button primary" type="submit">
-            <Plus size={16} aria-hidden="true" /> Create
+          <button className="button primary" type="submit" disabled={busy}>
+            <Plus size={16} aria-hidden="true" /> {busy ? "Creating…" : "Create"}
           </button>
         </form>
+        </details>
+        {pipelines.length === 0 && <p className="muted small">Create a pipeline to choose a starting model and open the editor.</p>}
         <div className="card-grid">
           {pipelines.map((pipeline) => (
             <Link key={pipeline.id} className="card card-link" to={`/sandboxes/${sandboxId}/pipelines/${pipeline.id}`}>
@@ -123,6 +137,7 @@ export default function SandboxPage() {
         {runs.length === 0 ? (
           <p className="muted">No runs yet. Open a pipeline and press Run.</p>
         ) : (
+          <div className="table-scroll compact-list" role="region" aria-label="Recent sandbox runs" tabIndex={0}>
           <table className="table">
             <thead>
               <tr>
@@ -164,6 +179,7 @@ export default function SandboxPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>

@@ -55,6 +55,7 @@ async def cleanup_test_users(request):
         ).all()
         for user in users:
             shutil.rmtree(storage.datasets_root() / "users" / user.id, ignore_errors=True)
+            shutil.rmtree(storage.predict_inputs_root() / user.id, ignore_errors=True)
         await db.execute(delete(User).where(User.email.like("%@example.test")))
         # Teams whose members were all test users are left without members.
         await db.execute(

@@ -53,6 +53,11 @@ class TaskPlugin:
         """Saved with checkpoints so a model can be used without the dataset."""
         return {"type": self.type, "classes": self.classes, "targets": self.targets}
 
+    def load_state(self, state: dict[str, Any]) -> None:
+        """The inverse of state(): set up from a checkpoint instead of a dataset."""
+        self.classes = list(state.get("classes") or [])
+        self.targets = list(state.get("targets") or [])
+
     # -- data ---------------------------------------------------------------------
 
     def collate(self, batch: list[tuple[torch.Tensor, Any]]) -> tuple[Any, Any]:

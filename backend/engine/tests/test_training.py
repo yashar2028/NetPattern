@@ -50,6 +50,33 @@ def test_sanity_overfits_one_batch_for_segmentation(make_pipeline, seg_graph):
     assert result["passed"], result
 
 
+def test_sanity_uses_the_configured_optimizer(monkeypatch, make_pipeline, cnn):
+    from netpattern_engine import pipeline
+    from netpattern_engine.training.optim import build_optimizer
+
+    calls = []
+
+    def record_optimizer(model, optimizer_spec, head):
+        calls.append(optimizer_spec)
+        return build_optimizer(model, optimizer_spec, head)
+
+    monkeypatch.setattr(pipeline, "build_optimizer", record_optimizer)
+    training = {
+        **TRAINING,
+        "optimizer": {"name": "sgd", "lr": 0.001, "momentum": 0.9},
+    }
+    spec = resolve_pipeline(
+        make_pipeline({"type": "classification.single_label"}, _synthetic(), cnn(), training)
+    )
+
+    sanity(spec, _noop, steps=2)
+
+    assert len(calls) == 1
+    assert calls[0].name == "sgd"
+    assert calls[0].lr == 0.001
+    assert calls[0].momentum == 0.9
+
+
 def test_sanity_overfits_one_batch_for_detection(make_pipeline):
     architecture = {
         "kind": "pretrained",
@@ -60,7 +87,9 @@ def test_sanity_overfits_one_batch_for_detection(make_pipeline):
             "options": {"min_size": 96, "max_size": 96},
         },
     }
-    training = {**TRAINING, "batch_size": 2, "optimizer": {"lr": 0.002}}
+    # A randomly initialized detector needs smaller updates than the toy classifiers.
+    # Keep Adam explicit so this exercises the original optimizer with a safer step size.
+    training = {**TRAINING, "batch_size": 2, "optimizer": {"name": "adam", "lr": 0.0001}}
     spec = resolve_pipeline(
         make_pipeline(
             {"type": "detection.bbox"},
@@ -104,6 +133,63 @@ def test_train_job_streams_events_writes_checkpoints_and_metrics(
     assert Path(tmp_path / result["checkpoints"]["best"]).is_file()
     epoch = next(e for e in events if e["type"] == "epoch_end")
     assert "val/f1_macro" in epoch["metrics"] and "train/loss" in epoch["metrics"]
+
+
+class _Crash(Exception):
+    pass
+
+
+def test_interrupted_training_resumes_where_it_stopped(tmp_path, make_pipeline, cnn):
+    from netpattern_engine.pipeline import train
+    from netpattern_engine.training.trainer import CancelToken
+
+    training = {**TRAINING, "epochs": 3, "deterministic": True, "scheduler": {"name": "cosine"}}
+    raw = make_pipeline(
+        {"type": "classification.single_label"}, _synthetic(num_samples=48), cnn(), training
+    )
+    reference = train(resolve_pipeline(raw), tmp_path / "reference", _noop, CancelToken())
+
+    def crash_after_first_epoch(kind, **payload):
+        if kind == "epoch_end" and payload["epoch"] == 1:
+            raise _Crash  # the worker died right after epoch 1 was saved
+
+    run_dir = tmp_path / "run"
+    with pytest.raises(_Crash):
+        train(resolve_pipeline(raw), run_dir, crash_after_first_epoch, CancelToken())
+    events = []
+    resumed = train(
+        resolve_pipeline(raw),
+        run_dir,
+        lambda kind, **payload: events.append((kind, payload)),
+        CancelToken(),
+        resume=True,
+    )
+
+    assert ("resumed", {"from_epoch": 2, "epochs_done": 1}) in events
+    assert [p["epoch"] for kind, p in events if kind == "epoch_end"] == [2, 3]
+    assert resumed["training"]["epochs_run"] == 3
+    expected = [h["metrics"]["train/loss"] for h in reference["training"]["history"]]
+    actual = [h["metrics"]["train/loss"] for h in resumed["training"]["history"]]
+    assert actual == pytest.approx(expected, abs=1e-5)
+
+
+def test_resume_without_a_checkpoint_starts_from_scratch(tmp_path, make_pipeline, cnn):
+    from netpattern_engine.pipeline import train
+    from netpattern_engine.training.trainer import CancelToken
+
+    raw = make_pipeline({"type": "classification.single_label"}, _synthetic(), cnn(), TRAINING)
+    events = []
+
+    result = train(
+        resolve_pipeline(raw),
+        tmp_path,
+        lambda kind, **payload: events.append(kind),
+        CancelToken(),
+        resume=True,
+    )
+
+    assert "resumed" not in events
+    assert result["training"]["epochs_run"] == 2
 
 
 def test_invalid_pipeline_fails_with_issues(tmp_path, capsys, make_pipeline, cnn):

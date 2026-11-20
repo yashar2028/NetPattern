@@ -89,6 +89,7 @@ export default function DatasetPage() {
         {dataset.versions.length === 0 ? (
           <p className="muted">No versions yet. Upload a zip of your dataset folder.</p>
         ) : (
+          <div className="table-scroll compact-list" role="region" aria-label="Dataset version list" tabIndex={0}>
           <table className="table">
             <thead>
               <tr>
@@ -115,12 +116,13 @@ export default function DatasetPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
       {latest && (
-        <section className="section">
-          <h2>Profile a version</h2>
+        <details className="compact-disclosure">
+          <summary>Profile a version</summary>
           <p className="muted">Class counts, image sizes, intensities and warnings, computed in a sandbox.</p>
           <form className="panel inline-form" onSubmit={runProfile}>
             <label className="field">
@@ -160,7 +162,7 @@ export default function DatasetPage() {
               <BarChart3 size={16} aria-hidden="true" /> Profile
             </button>
           </form>
-        </section>
+        </details>
       )}
     </div>
   );

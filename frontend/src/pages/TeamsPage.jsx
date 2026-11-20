@@ -34,6 +34,9 @@ function TeamCard({ team, me, onChange }) {
           {formatCount(Math.round(usage.total_units))} compute units used in the team&apos;s sandboxes
         </p>
       )}
+      <details className="compact-disclosure">
+      <summary>Members ({team.members.length})</summary>
+      <div className="table-scroll compact-list" role="region" aria-label="Team member list" tabIndex={0}>
       <table className="table compact">
         <tbody>
           {team.members.map((member) => (
@@ -55,7 +58,11 @@ function TeamCard({ team, me, onChange }) {
           ))}
         </tbody>
       </table>
+      </div>
+      </details>
       {owner && (
+        <details className="compact-disclosure">
+        <summary>Add a member</summary>
         <form
           className="inline-form compact"
           onSubmit={(event) => {
@@ -66,11 +73,12 @@ function TeamCard({ team, me, onChange }) {
             });
           }}
         >
-          <input type="email" required placeholder="colleague@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input type="email" aria-label="Member email" required placeholder="colleague@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           <button className="button" type="submit">
             <UserPlus size={16} aria-hidden="true" /> Add member
           </button>
         </form>
+        </details>
       )}
       {error && <p className="error small">{error}</p>}
     </section>
@@ -99,6 +107,8 @@ export default function TeamsPage() {
           </p>
         </div>
       </header>
+      <details className="compact-disclosure">
+      <summary>New team</summary>
       <form
         className="panel inline-form"
         onSubmit={async (event) => {
@@ -120,8 +130,10 @@ export default function TeamsPage() {
           <Users size={16} aria-hidden="true" /> Create
         </button>
       </form>
+      </details>
       {error && <p className="error" role="alert">{error}</p>}
-      {teams?.length === 0 && <p className="muted">No teams yet.</p>}
+      {teams === null && !error && <p className="muted">Loading teams…</p>}
+      {teams?.length === 0 && <div className="empty-state"><Users size={24} aria-hidden="true" /><strong>No teams yet</strong><p>Create a team above to share datasets and sandboxes with colleagues.</p></div>}
       {teams?.map((team) => (
         <TeamCard key={team.id} team={team} me={user} onChange={load} />
       ))}

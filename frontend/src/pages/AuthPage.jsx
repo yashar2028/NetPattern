@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { ArrowRight, Boxes, Database, Network } from "lucide-react";
 
 import { errorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -8,7 +9,7 @@ export default function AuthPage() {
   const { user, signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(() => new URLSearchParams(location.search).get("mode") === "register" ? "register" : "login");
   const [form, setForm] = useState({ email: "", password: "", full_name: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,8 +38,21 @@ export default function AuthPage() {
   const update = (key) => (event) => setForm({ ...form, [key]: event.target.value });
 
   return (
+    <div className="auth-layout">
+    <section className="auth-intro">
+      <p className="eyebrow">Welcome to NetPattern</p>
+      <h1>Your ideas deserve a better workspace.</h1>
+      <p>Bring your imaging experiments together, from your first dataset to a deployed model.</p>
+      <div className="auth-benefits">
+        <div><Database size={19} aria-hidden="true" /><span><strong>Organize your data</strong><small>Keep versions of your datasets in one place.</small></span></div>
+        <div><Network size={19} aria-hidden="true" /><span><strong>Build visually</strong><small>Turn your model ideas into editable pipelines.</small></span></div>
+        <div><Boxes size={19} aria-hidden="true" /><span><strong>Keep experiments reproducible</strong><small>Each sandbox pins its software environment.</small></span></div>
+      </div>
+    </section>
     <section className="panel auth-panel">
-      <h1>{mode === "login" ? "Sign in" : "Create an account"}</h1>
+      <p className="eyebrow">Your workspace awaits</p>
+      <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2>
+      <p className="muted">{mode === "login" ? "Sign in to pick up where you left off." : "Get started with your own workspace."}</p>
       <form className="stack" onSubmit={submit}>
         {mode === "register" && (
           <label className="field">
@@ -60,10 +74,11 @@ export default function AuthPage() {
             onChange={update("password")}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
+          {mode === "register" && <small className="muted">Use at least 8 characters.</small>}
         </label>
         {error && <p className="error" role="alert">{error}</p>}
         <button className="button primary" type="submit" disabled={busy}>
-          {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+          {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"} <ArrowRight size={16} aria-hidden="true" />
         </button>
       </form>
       <button
@@ -76,6 +91,8 @@ export default function AuthPage() {
       >
         {mode === "login" ? "No account yet? Create one" : "Already have an account? Sign in"}
       </button>
+      <Link className="auth-home-link" to="/">Learn more about NetPattern</Link>
     </section>
+    </div>
   );
 }

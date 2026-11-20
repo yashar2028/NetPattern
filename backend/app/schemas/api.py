@@ -154,8 +154,12 @@ class DatasetVersionOut(Out):
     number: int
     files: int
     size_bytes: int
+    status: str
     created_at: datetime
     top_level: list[str] = []
+    deleted_at: datetime | None = None
+    # When a deleted version stops being restorable.
+    purge_after: datetime | None = None
 
 
 class DatasetOut(Out):
@@ -165,6 +169,8 @@ class DatasetOut(Out):
     team_id: str | None
     created_at: datetime
     versions: list[DatasetVersionOut] = []
+    deleted_at: datetime | None = None
+    purge_after: datetime | None = None
 
 
 class ProfileRequest(BaseModel):

@@ -119,6 +119,55 @@ def test_prepare_request_rejects_escaping_dataset_roots():
         prepare_request(job)
 
 
+def test_retried_training_jobs_resume():
+    first = _job({"pipeline": {"nodes": []}})
+    first.attempts = 1
+    retry = _job({"pipeline": {"nodes": []}})
+    retry.attempts = 2
+
+    assert "resume" not in prepare_request(first)[0]
+    assert prepare_request(retry)[0]["resume"] is True
+
+
+def _predict_payload(**changes) -> dict:
+    payload = {
+        "pipeline": {
+            "nodes": [{"id": "d", "type": "dataset", "params": {"format": "csv", "root": "pets"}}]
+        },
+        "source_run_id": "job_" + "a" * 32,
+        "checkpoint": "best",
+        "inputs": {"source": "upload", "root": "usr_1/abc"},
+    }
+    return {**payload, **changes}
+
+
+def test_predictions_read_only_the_checkpoint_and_their_inputs():
+    request, readable, writable = prepare_request(_job(_predict_payload(), kind="predict"))
+
+    checkpoints = storage.run_dir("job_" + "a" * 32) / "checkpoints"
+    inputs = (storage.predict_inputs_root() / "usr_1" / "abc").resolve()
+    assert request["checkpoint"] == str(checkpoints / "best.pt")
+    assert request["inputs"] == {"source": "upload", "root": str(inputs)}
+    assert readable == [checkpoints, inputs] and writable == []
+    # The training data stays out of the sandbox.
+    assert request["pipeline"]["nodes"][0]["params"]["root"] == "pets"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"source_run_id": "../runs/job_x"},
+        {"checkpoint": "../../secret"},
+        {"inputs": {"source": "upload", "root": "../../datasets"}},
+        {"inputs": {"source": "dataset", "root": "../runs"}},
+        {"inputs": {"source": "elsewhere", "root": "x"}},
+    ],
+)
+def test_prediction_paths_cannot_escape(changes):
+    with pytest.raises(ValueError):
+        prepare_request(_job(_predict_payload(**changes), kind="predict"))
+
+
 @pytest.mark.parametrize(
     ("architecture", "expected"),
     [

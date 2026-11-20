@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from sqlalchemy import BigInteger, Boolean, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +35,10 @@ class Job(Base):
     """One unit of sandbox work: a training run, a sanity check, a dataset profile, …"""
 
     __tablename__ = "jobs"
-    __table_args__ = (Index("ix_jobs_claim", "status", "hardware_tier", "priority", "created_at"),)
+    __table_args__ = (
+        Index("ix_jobs_claim", "status", "hardware_tier", "priority", "created_at"),
+        Index("ix_jobs_dataset_version_ids", "dataset_version_ids", postgresql_using="gin"),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=new_job_id)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -62,6 +65,10 @@ class Job(Base):
     )
     # The engine request (pipeline, dataset, options) without the run id.
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Dataset versions the job reads; the payload itself only holds their folders.
+    dataset_version_ids: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     # Requested environment: {"template": ..., "packs": [...]} (packs are added as needed).
     environment: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     environment_id: Mapped[str | None] = mapped_column(
