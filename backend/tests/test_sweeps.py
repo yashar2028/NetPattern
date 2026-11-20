@@ -38,9 +38,30 @@ def test_paths_patch_nested_params_and_grids_have_a_limit():
     assert "more than max_runs" in caught.value.detail
 
 
-async def test_a_sweep_starts_one_labeled_run_per_combination(client, register):
+async def test_a_gpu_sweep_needs_a_cuda_environment(client, register):
     headers, _ = await register()
     sandbox = (await client.post("/v1/sandboxes", json={"name": "s"}, headers=headers)).json()
+
+    response = await client.post(
+        f"/v1/sandboxes/{sandbox['id']}/sweeps",
+        json={
+            "pipeline_version_id": "unused",
+            "parameters": [{"path": "trainer.batch_size", "values": [8, 16]}],
+            "hardware_tier": "gpu",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422 and "CUDA" in response.json()["detail"]
+
+
+async def test_a_sweep_starts_one_labeled_run_per_combination(client, register):
+    headers, _ = await register()
+    sandbox = (
+        await client.post(
+            "/v1/sandboxes", json={"name": "s", "template": "pytorch-cuda12"}, headers=headers
+        )
+    ).json()
     pipeline = (
         await client.post(
             f"/v1/sandboxes/{sandbox['id']}/pipelines",

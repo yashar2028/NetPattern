@@ -1,6 +1,7 @@
 """Platform API against the real PostgreSQL (run inside docker compose).
 
-Runs are created on the "gpu" tier so the CPU worker of the dev stack leaves them alone.
+Runs are created on the "gpu" tier so the CPU worker of the dev stack leaves them alone; their
+sandboxes use the CUDA environment, which GPU tiers require.
 """
 
 import io
@@ -51,8 +52,10 @@ SPEC = {
 }
 
 
-async def _sandbox(client, headers, name="cnn"):
-    response = await client.post("/v1/sandboxes", json={"name": name}, headers=headers)
+async def _sandbox(client, headers, name="cnn", template="pytorch-cuda12"):
+    response = await client.post(
+        "/v1/sandboxes", json={"name": name, "template": template}, headers=headers
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -235,8 +238,30 @@ async def test_run_resolves_datasets_and_uses_the_pinned_engine(client, register
         "format": "csv",
         "root": f"users/{user['id']}/{version['dataset_id']}/v1/pets",
     }
-    assert job.environment == {"template": "pytorch-cpu", "engine_snapshot": "ab" * 32}
+    assert job.environment == {"template": "pytorch-cuda12", "engine_snapshot": "ab" * 32}
     assert job.owner_id == user["id"] and job.sandbox_id == sandbox["id"]
+
+
+async def test_gpu_tiers_need_a_cuda_environment(client, register):
+    headers, _ = await register()
+    cpu_sandbox = await _sandbox(client, headers, template="pytorch-cpu")
+    version = await _dataset_version(client, headers)
+    pipeline_version = await _pipeline_version(client, headers, cpu_sandbox["id"], version["id"])
+
+    rejected = await client.post(
+        f"/v1/sandboxes/{cpu_sandbox['id']}/runs",
+        json={"pipeline_version_id": pipeline_version["id"], "hardware_tier": "gpu"},
+        headers=headers,
+    )
+    for_cpu = (await client.get("/v1/hardware-tiers", params={"template": "pytorch-cpu"})).json()
+    for_cuda = (
+        await client.get("/v1/hardware-tiers", params={"template": "pytorch-cuda12"})
+    ).json()
+
+    assert rejected.status_code == 422 and "CUDA" in rejected.json()["detail"]
+    # CPU-only environments lose the GPU tiers; CUDA environments keep the CPU tiers too.
+    assert all(tier["available"] == (tier["gpus"] == 0) for tier in for_cpu)
+    assert all(tier["available"] and tier["reason"] is None for tier in for_cuda)
 
 
 async def test_runs_cannot_reach_other_users_data(client, register):

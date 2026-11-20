@@ -14,6 +14,7 @@ from app.api.deps import SCOPE_ALL, Caller, get_current_user, get_inference_call
 from app.api.models import owned_model, owned_version
 from app.core.config import settings
 from app.core.errors import ApiError
+from app.core.tiers import tier_problem
 from app.db.session import get_db
 from app.models.job import Environment
 from app.models.model import (
@@ -117,7 +118,17 @@ async def create_deployment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Deployment:
-    await owned_version(db, body.model_version_id, user)
+    version = await owned_version(db, body.model_version_id, user)
+    environment = await db.get(Environment, version.environment_id)
+    if environment is not None and (
+        problem := tier_problem(body.hardware_tier, environment.template)
+    ):
+        raise _problem(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_deployment",
+            "Cannot create the deployment",
+            problem,
+        )
     deployment = Deployment(
         owner_id=user.id,
         model_version_id=body.model_version_id,

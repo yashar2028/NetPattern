@@ -220,6 +220,26 @@ async def test_bad_inputs_other_deployments_and_rate_limits(
     assert limited.status_code == 429
 
 
+async def test_a_gpu_deployment_needs_a_cuda_environment(client, fake_worker, trained_run):
+    headers, run_id = trained_run  # trained in pytorch-cpu
+    model = (
+        await client.post("/v1/models", json={"run_id": run_id, "name": "pets"}, headers=headers)
+    ).json()
+
+    response = await client.post(
+        "/v1/deployments",
+        json={
+            "model_version_id": model["versions"][0]["id"],
+            "name": "pets-gpu",
+            "hardware_tier": "gpu",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422 and "CUDA" in response.json()["detail"]
+    assert not any(call[0] == "start" for call in fake_worker.calls)
+
+
 async def test_a_failed_parity_check_blocks_traffic(client, fake_worker, trained_run):
     headers, run_id = trained_run
     fake_worker.parity = {"passed": False, "samples": 4, "mismatches": ["parity/0.png"]}

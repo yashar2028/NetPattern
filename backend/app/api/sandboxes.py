@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, not_found
 from app.core.errors import ApiError
 from app.core.pagination import DEFAULT_LIMIT, Page, paginate
-from app.core.tiers import tiers
+from app.core.tiers import tier_problem, tiers
 from app.db.session import get_db
 from app.models.job import Job, JobStatus
 from app.models.sandbox import Pipeline, PipelineVersion, Sandbox
@@ -60,9 +60,17 @@ async def environment_templates() -> dict:
 
 
 @router.get("/hardware-tiers", tags=["usage"])
-async def hardware_tiers() -> list[dict]:
-    """Bubble sizes a job can run in, and their rates in compute units per second."""
-    return [tier.to_dict() for tier in tiers().values()]
+async def hardware_tiers(template: str | None = None) -> list[dict]:
+    """Bubble sizes a job can run in, and their rates in compute units per second.
+
+    With `template`, each tier also says whether it can run in that environment (`available`)
+    and, if not, why (`reason`).
+    """
+    result = []
+    for tier in tiers().values():
+        problem = tier_problem(tier.name, template) if template else None
+        result.append({**tier.to_dict(), "available": problem is None, "reason": problem})
+    return result
 
 
 # --------------------------------------------------------------------------- sandboxes

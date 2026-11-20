@@ -73,9 +73,12 @@ export async function getVersionById(versionId) {
   return response.data;
 }
 
-/** Bubble sizes a job can run in, with their rates (compute units per second). */
-export async function hardwareTiers() {
-  const response = await apiClient.get("/v1/hardware-tiers");
+/**
+ * Bubble sizes a job can run in, with their rates (compute units per second).
+ * With a template, each tier says whether that environment can use it (`available`, `reason`).
+ */
+export async function hardwareTiers(template) {
+  const response = await apiClient.get("/v1/hardware-tiers", { params: template ? { template } : {} });
   return response.data;
 }
 

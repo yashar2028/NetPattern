@@ -29,7 +29,7 @@ export default function SweepPanel({ tiers, onStart, onClose }) {
   const [folds, setFolds] = useState("");
   const [mode, setMode] = useState("grid");
   const [maxRuns, setMaxRuns] = useState(16);
-  const [tier, setTier] = useState(tiers[0]?.name || "cpu");
+  const [tier, setTier] = useState(tiers.find((item) => item.available !== false)?.name || "cpu");
   const [busy, setBusy] = useState(false);
 
   const parameters = [
@@ -91,8 +91,9 @@ export default function SweepPanel({ tiers, onStart, onClose }) {
           <span>Hardware</span>
           <select value={tier} onChange={(e) => setTier(e.target.value)}>
             {tiers.map((item) => (
-              <option key={item.name} value={item.name}>
+              <option key={item.name} value={item.name} title={item.reason || undefined} disabled={item.available === false}>
                 {item.name}
+                {item.available === false ? " · needs a CUDA environment" : ""}
               </option>
             ))}
           </select>

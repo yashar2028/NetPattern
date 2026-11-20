@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, not_found
 from app.api.sandboxes import owned_sandbox
 from app.core.errors import ApiError
+from app.core.tiers import tier_problem
 from app.db.session import get_db
 from app.models.job import Job
 from app.models.sandbox import Pipeline, PipelineVersion
@@ -123,6 +124,8 @@ async def start_sweep(
     db: AsyncSession = Depends(get_db),
 ) -> SweepOut:
     sandbox = await owned_sandbox(db, sandbox_id, user)
+    if problem := tier_problem(body.hardware_tier, sandbox.template):
+        raise _invalid(problem)
     version = await db.get(PipelineVersion, body.pipeline_version_id)
     pipeline = await db.get(Pipeline, version.pipeline_id) if version else None
     if version is None or pipeline is None or pipeline.sandbox_id != sandbox.id:

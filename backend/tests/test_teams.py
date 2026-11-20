@@ -38,7 +38,9 @@ async def test_team_members_share_sandboxes_datasets_and_runs(client, register):
     )
     sandbox = (
         await client.post(
-            "/v1/sandboxes", json={"name": "shared", "team_id": team["id"]}, headers=alice
+            "/v1/sandboxes",
+            json={"name": "shared", "template": "pytorch-cuda12", "team_id": team["id"]},
+            headers=alice,
         )
     ).json()
     dataset = (

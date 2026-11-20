@@ -9,6 +9,7 @@ import { listDatasets } from "../api/datasetsApi";
 import { startRun } from "../api/runsApi";
 import {
   getPipeline,
+  getSandbox,
   getVersion,
   hardwareTiers,
   listVersions,
@@ -102,8 +103,15 @@ export default function PipelinePage() {
       }
     })();
     listDatasets().then(setDatasets).catch(() => {});
-    hardwareTiers().then(setTiers).catch(() => {});
   }, [pipelineId, loadVersion]);
+
+  // GPU tiers need a CUDA environment; the server marks the ones this sandbox cannot use.
+  useEffect(() => {
+    getSandbox(sandboxId)
+      .then((sandbox) => hardwareTiers(sandbox.template))
+      .then(setTiers)
+      .catch(() => {});
+  }, [sandboxId]);
 
   // The forms come from the sandbox's own engine; the first call may start the environment.
   useEffect(() => {
@@ -212,8 +220,14 @@ export default function PipelinePage() {
             onChange={(event) => setRunOptions({ ...runOptions, hardware_tier: event.target.value })}
           >
             {tiers.map((tier) => (
-              <option key={tier.name} value={tier.name} title={tier.description}>
+              <option
+                key={tier.name}
+                value={tier.name}
+                title={tier.reason || tier.description}
+                disabled={tier.available === false}
+              >
                 {tier.name} · {tier.cpus} cores{tier.gpus ? ` + ${tier.gpus} GPU` : ""} · {tier.rate} units/s
+                {tier.available === false ? " · needs a CUDA environment" : ""}
               </option>
             ))}
           </select>
