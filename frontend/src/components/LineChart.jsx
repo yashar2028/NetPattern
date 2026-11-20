@@ -30,7 +30,7 @@ function useColorScheme() {
  * Lines on one shared axis (never two y-scales). `series` is [{name, data: [[x, y], ...]}];
  * colors follow the series position in fixed order. A legend appears for two or more series.
  */
-export default function LineChart({ series, xName, label, height = 260 }) {
+export default function LineChart({ series, xName, label, height = 260, xLog = false }) {
   const element = useRef(null);
   const chart = useRef(null);
   const dark = useColorScheme();
@@ -67,11 +67,11 @@ export default function LineChart({ series, xName, label, height = 260 }) {
           valueFormatter: (value) => formatMetric(value),
         },
         xAxis: {
-          type: "value",
+          type: xLog ? "log" : "value",
           name: xName,
           nameLocation: "middle",
           nameGap: 26,
-          minInterval: 1,
+          minInterval: xLog ? undefined : 1,
           min: "dataMin",
           max: "dataMax",
           axisLine: { lineStyle: { color: grid } },
@@ -100,7 +100,7 @@ export default function LineChart({ series, xName, label, height = 260 }) {
       },
       true
     );
-  }, [series, xName, dark]);
+  }, [series, xName, xLog, dark]);
 
   return <div ref={element} className="chart" style={{ height }} role="img" aria-label={label} />;
 }

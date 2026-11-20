@@ -23,7 +23,7 @@ from app.db.session import get_db
 from app.models.dataset import FAILED, READY, UPLOADING, Dataset, DatasetVersion
 from app.models.user import User
 from app.schemas.api import DatasetCreate, DatasetOut, DatasetVersionOut, ProfileRequest, RunOut
-from app.services import storage
+from app.services import access, storage
 from app.services.retention import purge_after
 from app.services.runs import RunRequestError, active_jobs_using, dataset_folder
 from app.services.uploads import UploadError, extract_zip, staging_folder
@@ -35,14 +35,23 @@ RESERVE_ATTEMPTS = 3
 
 
 async def owned_dataset(
-    db: AsyncSession, dataset_id: str, user: User, deleted: bool | None = False
+    db: AsyncSession,
+    dataset_id: str,
+    user: User,
+    owner_only: bool = False,
+    *,
+    deleted: bool | None = False,
 ) -> Dataset:
-    """`deleted`: False for live datasets only, True for deleted ones only, None for both."""
+    """Live datasets may be shared with a team; only owners can access deleted datasets."""
     dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or (deleted is not None and (dataset.deleted_at is not None) != deleted):
+        raise not_found("Dataset")
+    if dataset.owner_id == user.id:
+        return dataset
     if (
-        dataset is None
-        or dataset.owner_id != user.id
-        or (deleted is not None and (dataset.deleted_at is not None) != deleted)
+        owner_only
+        or dataset.deleted_at is not None
+        or not await access.can_use(db, user, dataset.owner_id, dataset.team_id)
     ):
         raise not_found("Dataset")
     return dataset
@@ -115,7 +124,9 @@ async def _refuse_if_in_use(db: AsyncSession, version_ids: list[str], what: str)
 async def create_dataset(
     body: DatasetCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Dataset:
-    dataset = Dataset(owner_id=user.id, name=body.name)
+    if body.team_id is not None and body.team_id not in await access.team_ids(db, user):
+        raise not_found("Team")
+    dataset = Dataset(owner_id=user.id, name=body.name, team_id=body.team_id)
     db.add(dataset)
     await db.commit()
     await db.refresh(dataset)
@@ -130,8 +141,13 @@ async def list_datasets(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    visible = (
+        Dataset.owner_id == user.id
+        if deleted
+        else await access.visible(db, user, Dataset.owner_id, Dataset.team_id)
+    )
     query = select(Dataset).where(
-        Dataset.owner_id == user.id,
+        visible,
         Dataset.deleted_at.is_not(None) if deleted else Dataset.deleted_at.is_(None),
     )
     rows, next_cursor = await paginate(db, query, Dataset, limit, cursor)
@@ -145,7 +161,7 @@ async def get_dataset(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DatasetOut:
-    dataset = await owned_dataset(db, dataset_id, user, deleted=None)
+    dataset = await owned_dataset(db, dataset_id, user, owner_only=include_deleted, deleted=None)
     return _dataset_out(dataset, await _versions(db, dataset.id, include_deleted))
 
 
@@ -154,7 +170,7 @@ async def delete_dataset(
     dataset_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Response:
     """Soft delete: restorable for DATASET_RETENTION_DAYS, then its files are removed."""
-    dataset = await owned_dataset(db, dataset_id, user)
+    dataset = await owned_dataset(db, dataset_id, user, owner_only=True)
     version_ids = list(
         (
             await db.execute(
@@ -186,7 +202,8 @@ async def delete_version(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """Soft delete one version; restorable for DATASET_RETENTION_DAYS."""
-    version = await _version(db, await owned_dataset(db, dataset_id, user), number)
+    dataset = await owned_dataset(db, dataset_id, user, owner_only=True)
+    version = await _version(db, dataset, number)
     await _refuse_if_in_use(db, [version.id], "dataset version")
     version.deleted_at = datetime.now(UTC)
     await db.commit()
@@ -200,18 +217,19 @@ async def restore_version(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DatasetVersionOut:
-    version = await _version(db, await owned_dataset(db, dataset_id, user), number, deleted=True)
+    dataset = await owned_dataset(db, dataset_id, user, owner_only=True)
+    version = await _version(db, dataset, number, deleted=True)
     version.deleted_at = None
     await db.commit()
     return _version_out(version)
 
 
-async def _reserve_version(db: AsyncSession, dataset: Dataset, user: User) -> DatasetVersion:
+async def _reserve_version(db: AsyncSession, dataset: Dataset) -> DatasetVersion:
     """Claim the next version number with an "uploading" row before any file is written.
 
     Failed and interrupted uploads keep their numbers, so a number is never reused.
     """
-    dataset_id, owner_id = dataset.id, user.id  # a rollback expires the ORM objects
+    dataset_id, owner_id = dataset.id, dataset.owner_id  # a rollback expires the ORM objects
     for attempt in range(1, RESERVE_ATTEMPTS + 1):
         number = (
             await db.scalar(
@@ -271,7 +289,7 @@ async def upload_version(
                     )
                 out.write(chunk)
 
-        version = await _reserve_version(db, dataset, user)
+        version = await _reserve_version(db, dataset)
         version_id = version.id
         target = storage.datasets_root() / version.path
         try:

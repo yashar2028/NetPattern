@@ -1,0 +1,75 @@
+name: Deploy
+
+# Deploys main to the DigitalOcean droplet after CI has passed on it (docs/deploy.md).
+# Switched off until the repository variable DEPLOY_ENABLED is "true": until then the job shows
+# as skipped, never as failed.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deployment at a time; a second merge waits for the first instead of cancelling it.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to DigitalOcean
+    # A green CI run from a push to main, or the manual button on main.
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      # The commit CI tested, not whatever main points to by now.
+      COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pinned host key: the connection fails if the server is not the one we expect.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy the tested commit and check its health
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "COMMIT=$COMMIT bash -s" <<'EOF'
+          set -euo pipefail
+          cd /opt/netpattern
+          git fetch --quiet origin main
+          git checkout --quiet --detach "$COMMIT"
+          compose="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+          # Rebuilds the images on the server and replaces only the containers that changed.
+          $compose up -d --build --remove-orphans
+          port="$(grep -E '^HTTP_PORT=' .env | tail -n 1 | cut -d= -f2)"
+          for _ in $(seq 1 60); do
+            if curl -fsS "http://localhost:${port:-80}/health"; then
+              echo
+              echo "deployed $COMMIT"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "health check failed after 5 minutes" >&2
+          $compose ps
+          $compose logs --tail 50 backend
+          exit 1
+          EOF

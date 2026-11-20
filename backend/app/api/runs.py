@@ -4,13 +4,13 @@ import asyncio
 import json
 import re
 import shutil
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import func, select
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, not_found
@@ -19,12 +19,13 @@ from app.core.config import settings
 from app.core.errors import ApiError
 from app.core.pagination import DEFAULT_LIMIT, Page, paginate
 from app.db.session import AsyncSessionLocal, get_db
-from app.models.job import FINISHED_STATUSES, Job, JobStatus
-from app.models.sandbox import Pipeline, PipelineVersion
+from app.models.job import FINISHED_STATUSES, Environment, Job, JobStatus
+from app.models.model import InferenceRecord
+from app.models.sandbox import Pipeline, PipelineVersion, Sandbox
 from app.models.usage import UsageRecord
 from app.models.user import User
 from app.schemas.api import RunCreate, RunEventOut, RunOut, UsageOut
-from app.services import storage
+from app.services import access, artifacts, storage
 from app.services.runs import (
     RunRequestError,
     checkpoint_path,
@@ -59,8 +60,14 @@ MASK_FILE = re.compile(r"^\d{5}\.png$")
 
 
 async def owned_run(db: AsyncSession, run_id: str, user: User) -> Job:
+    """A run the user started, or one in a sandbox shared with the user's team."""
     job = await db.get(Job, run_id)
-    if job is None or job.owner_id != user.id:
+    if job is None:
+        raise not_found("Run")
+    if job.owner_id == user.id:
+        return job
+    sandbox = await db.get(Sandbox, job.sandbox_id) if job.sandbox_id else None
+    if sandbox is None or not await access.can_use(db, user, sandbox.owner_id, sandbox.team_id):
         raise not_found("Run")
     return job
 
@@ -111,7 +118,10 @@ async def list_runs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    query = select(Job).where(Job.owner_id == user.id)
+    shared = await access.visible(db, user, Sandbox.owner_id, Sandbox.team_id)
+    query = select(Job).where(
+        or_(Job.owner_id == user.id, Job.sandbox_id.in_(select(Sandbox.id).where(shared)))
+    )
     if sandbox_id:
         query = query.where(Job.sandbox_id == sandbox_id)
     if status_filter:
@@ -192,9 +202,7 @@ async def download_checkpoint(
         raise not_found("Checkpoint") from None
     if not path.is_file():
         raise not_found("Checkpoint")
-    return FileResponse(
-        path, media_type="application/octet-stream", filename=f"{job.id}-{name}.pt"
-    )
+    return FileResponse(path, media_type="application/octet-stream", filename=f"{job.id}-{name}.pt")
 
 
 # --------------------------------------------------------------------------- predictions
@@ -348,6 +356,56 @@ async def prediction_file(
     return FileResponse(path, media_type="image/png")
 
 
+@router.get("/runs/{run_id}/files/{path:path}")
+async def run_file(
+    run_id: str,
+    path: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """A file the run wrote: error thumbnails, checkpoints, exports, reports."""
+    job = await owned_run(db, run_id, user)
+    if not job.run_dir:
+        raise not_found("File")
+    base = Path(job.run_dir).resolve()
+    target = (base / path).resolve()
+    if base not in target.parents or not target.is_file():
+        raise not_found("File")
+    return FileResponse(target, filename=target.name)
+
+
+@router.get("/runs/{run_id}/report.html", response_class=HTMLResponse)
+async def run_report(
+    run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> HTMLResponse:
+    """A self-contained, printable HTML report of the run."""
+    job = await owned_run(db, run_id, user)
+    environment = await db.get(Environment, job.environment_id) if job.environment_id else None
+    return HTMLResponse(artifacts.run_report(job, environment))
+
+
+@router.get("/runs/{run_id}/reproduce.zip")
+async def reproduce_bundle(
+    run_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> Response:
+    """Everything needed to rerun this job on any machine with Nix (same environment hash)."""
+    job = await owned_run(db, run_id, user)
+    environment = await db.get(Environment, job.environment_id) if job.environment_id else None
+    if environment is None:
+        raise not_found("Environment of this run")
+    try:
+        data = await asyncio.to_thread(artifacts.reproduce_bundle, job, environment)
+    except FileNotFoundError as error:
+        raise ApiError(
+            status.HTTP_410_GONE, "snapshot_missing", "Cannot build the bundle", str(error)
+        )
+    return Response(
+        data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{job.id}-reproduce.zip"'},
+    )
+
+
 @router.get("/runs/{run_id}/events", response_model=list[RunEventOut])
 async def list_events(
     run_id: str,
@@ -403,8 +461,22 @@ async def stream_events(
 async def usage(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> UsageOut:
-    """Compute time used, by hardware tier and sandbox (no prices yet)."""
+    """Compute time and units used, by hardware tier and sandbox (no currency yet)."""
     mine = UsageRecord.owner_id == user.id
+    units_by_tier = dict(
+        (
+            await db.execute(
+                select(UsageRecord.hardware_tier, func.sum(UsageRecord.units))
+                .where(mine)
+                .group_by(UsageRecord.hardware_tier)
+            )
+        ).all()
+    )
+    deployment_seconds = await db.scalar(
+        select(func.coalesce(func.sum(UsageRecord.seconds), 0.0)).where(
+            mine, UsageRecord.deployment_id.is_not(None)
+        )
+    )
     by_tier = dict(
         (
             await db.execute(
@@ -423,8 +495,28 @@ async def usage(
             )
         ).all()
     )
-    jobs = await db.scalar(select(func.count(UsageRecord.id)).where(mine)) or 0
+    jobs = (
+        await db.scalar(
+            select(func.count(UsageRecord.id)).where(mine, UsageRecord.job_id.is_not(None))
+        )
+        or 0
+    )
+    calls, images, compute_ms = (
+        await db.execute(
+            select(
+                func.count(InferenceRecord.id),
+                func.coalesce(func.sum(InferenceRecord.images), 0),
+                func.coalesce(func.sum(InferenceRecord.compute_ms), 0.0),
+            ).where(InferenceRecord.owner_id == user.id)
+        )
+    ).one()
     return UsageOut(
+        total_units=round(sum(units_by_tier.values()), 3),
+        units_by_tier={tier: round(units, 3) for tier, units in units_by_tier.items()},
+        deployment_seconds=round(float(deployment_seconds or 0), 3),
+        inference_calls=calls,
+        inference_images=int(images),
+        inference_compute_seconds=round(float(compute_ms) / 1000, 3),
         total_seconds=round(sum(by_tier.values()), 2),
         jobs=jobs,
         by_tier={tier: round(seconds, 2) for tier, seconds in by_tier.items()},

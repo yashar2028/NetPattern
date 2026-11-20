@@ -34,7 +34,7 @@ def fake_worker(monkeypatch):
     monkeypatch.setattr(
         sessions_api,
         "worker_client",
-        lambda: httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://worker"),
+        lambda *args: httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://worker"),
     )
     return fake
 
@@ -91,7 +91,7 @@ async def test_worker_down_gives_503(client, register, monkeypatch):
     monkeypatch.setattr(
         sessions_api,
         "worker_client",
-        lambda: httpx.AsyncClient(base_url="http://127.0.0.1:9", timeout=2),
+        lambda *args: httpx.AsyncClient(base_url="http://127.0.0.1:9", timeout=2),
     )
 
     response = await client.post(f"/v1/sandboxes/{sandbox['id']}/session/schema", headers=headers)

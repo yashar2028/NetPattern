@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, not_found
 from app.core.errors import ApiError
 from app.core.pagination import DEFAULT_LIMIT, Page, paginate
+from app.core.tiers import tiers
 from app.db.session import get_db
 from app.models.job import Job, JobStatus
 from app.models.sandbox import Pipeline, PipelineVersion, Sandbox
@@ -21,15 +22,28 @@ from app.schemas.api import (
     SandboxOut,
     SandboxUpdate,
 )
+from app.services import access
 
 router = APIRouter(prefix="/v1", tags=["sandboxes"])
 
 
-async def owned_sandbox(db: AsyncSession, sandbox_id: str, user: User) -> Sandbox:
+async def owned_sandbox(
+    db: AsyncSession, sandbox_id: str, user: User, owner_only: bool = False
+) -> Sandbox:
+    """The sandbox if the user owns it or (unless owner_only) shares it through a team."""
     sandbox = await db.get(Sandbox, sandbox_id)
-    if sandbox is None or sandbox.owner_id != user.id:
+    if sandbox is None:
+        raise not_found("Sandbox")
+    if sandbox.owner_id == user.id:
+        return sandbox
+    if owner_only or not await access.can_use(db, user, sandbox.owner_id, sandbox.team_id):
         raise not_found("Sandbox")
     return sandbox
+
+
+async def require_team(db: AsyncSession, team_id: str | None, user: User) -> None:
+    if team_id is not None and team_id not in await access.team_ids(db, user):
+        raise not_found("Team")
 
 
 async def owned_pipeline(db: AsyncSession, pipeline_id: str, user: User) -> Pipeline:
@@ -42,7 +56,13 @@ async def owned_pipeline(db: AsyncSession, pipeline_id: str, user: User) -> Pipe
 
 @router.get("/environment-templates")
 async def environment_templates() -> dict:
-    return {"templates": list(KNOWN_TEMPLATES), "packs": list(KNOWN_PACKS), "tiers": ["cpu", "gpu"]}
+    return {"templates": list(KNOWN_TEMPLATES), "packs": list(KNOWN_PACKS), "tiers": list(tiers())}
+
+
+@router.get("/hardware-tiers", tags=["usage"])
+async def hardware_tiers() -> list[dict]:
+    """Bubble sizes a job can run in, and their rates in compute units per second."""
+    return [tier.to_dict() for tier in tiers().values()]
 
 
 # --------------------------------------------------------------------------- sandboxes
@@ -52,7 +72,10 @@ async def environment_templates() -> dict:
 async def create_sandbox(
     body: SandboxCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Sandbox:
-    sandbox = Sandbox(owner_id=user.id, name=body.name, template=body.template)
+    await require_team(db, body.team_id, user)
+    sandbox = Sandbox(
+        owner_id=user.id, name=body.name, template=body.template, team_id=body.team_id
+    )
     db.add(sandbox)
     await db.commit()
     await db.refresh(sandbox)
@@ -66,9 +89,8 @@ async def list_sandboxes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    rows, next_cursor = await paginate(
-        db, select(Sandbox).where(Sandbox.owner_id == user.id), Sandbox, limit, cursor
-    )
+    shared = await access.visible(db, user, Sandbox.owner_id, Sandbox.team_id)
+    rows, next_cursor = await paginate(db, select(Sandbox).where(shared), Sandbox, limit, cursor)
     return {"data": rows, "next_cursor": next_cursor}
 
 
@@ -96,7 +118,7 @@ async def rename_sandbox(
 async def delete_sandbox(
     sandbox_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Response:
-    sandbox = await owned_sandbox(db, sandbox_id, user)
+    sandbox = await owned_sandbox(db, sandbox_id, user, owner_only=True)
     active = await db.scalar(
         select(func.count(Job.id)).where(
             Job.sandbox_id == sandbox.id, Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])
@@ -259,4 +281,18 @@ async def get_version(
     )
     if version is None:
         raise not_found("Pipeline version")
+    return version
+
+
+@router.get("/pipeline-versions/{version_id}", response_model=PipelineVersionOut)
+async def get_version_by_id(
+    version_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PipelineVersion:
+    """A version by id (runs reference versions by id; used to compare runs)."""
+    version = await db.get(PipelineVersion, version_id)
+    if version is None:
+        raise not_found("Pipeline version")
+    await owned_pipeline(db, version.pipeline_id, user)
     return version

@@ -20,6 +20,10 @@ class Dataset(Base):
         String(40), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Shared with a team's members (owner keeps delete rights).
+    team_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = created_at_column()
     # Soft delete: restorable until the retention period ends, then purged.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

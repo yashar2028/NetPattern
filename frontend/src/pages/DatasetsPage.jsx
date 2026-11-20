@@ -4,22 +4,26 @@ import { Database, Plus } from "lucide-react";
 
 import { errorMessage } from "../api/client";
 import { createDataset, listDatasets } from "../api/datasetsApi";
+import { listTeams } from "../api/teamsApi";
 import { formatDate } from "../utils/format";
 
 export default function DatasetsPage() {
   const navigate = useNavigate();
   const [datasets, setDatasets] = useState(null);
   const [name, setName] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [teams, setTeams] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     listDatasets().then(setDatasets).catch((caught) => setError(errorMessage(caught)));
+    listTeams().then(setTeams).catch(() => {});
   }, []);
 
   const create = async (event) => {
     event.preventDefault();
     try {
-      const dataset = await createDataset({ name });
+      const dataset = await createDataset({ name, team_id: teamId || null });
       navigate(`/datasets/${dataset.id}`);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -39,6 +43,19 @@ export default function DatasetsPage() {
           <span>New dataset</span>
           <input required placeholder="e.g. pets" value={name} onChange={(event) => setName(event.target.value)} />
         </label>
+        {teams.length > 0 && (
+          <label className="field">
+            <span>Share with</span>
+            <select value={teamId} onChange={(event) => setTeamId(event.target.value)}>
+              <option value="">only me</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button className="button primary" type="submit">
           <Plus size={16} aria-hidden="true" /> Create
         </button>
@@ -50,7 +67,10 @@ export default function DatasetsPage() {
           <Link key={dataset.id} className="card card-link" to={`/datasets/${dataset.id}`}>
             <Database className="card-icon" size={20} aria-hidden="true" />
             <h2>{dataset.name}</h2>
-            <p className="muted small">created {formatDate(dataset.created_at)}</p>
+            <p className="muted small">
+              created {formatDate(dataset.created_at)}
+              {dataset.team_id ? " · shared with a team" : ""}
+            </p>
           </Link>
         ))}
       </div>

@@ -1,0 +1,17 @@
+# An extra worker machine (docs/scaling.md): only the worker, using the shared database and
+# storage. Start it with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.worker-node.yml \
+#     up -d --no-deps worker
+#
+# (add -f docker-compose.gpu.yml before this file on a GPU machine)
+services:
+  worker:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the shared PostgreSQL}
+      WORKER_ID: ${WORKER_ID:?Set a unique WORKER_ID for this machine}
+      WORKER_ADVERTISE_URL: ${WORKER_ADVERTISE_URL:?Set the URL the API uses to reach this worker}
+    depends_on: !reset {}
+    # The internal API (editor sessions, deployments). Bind it to the private network only.
+    ports:
+      - "${WORKER_BIND_ADDRESS:-127.0.0.1}:9000:9000"

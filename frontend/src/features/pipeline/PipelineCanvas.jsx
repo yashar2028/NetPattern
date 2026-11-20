@@ -47,9 +47,14 @@ const nodeTypes = { pipeline: PipelineNodeView };
 
 export function PipelinePalette({ spec }) {
   const present = new Set(spec.nodes.map((node) => node.type));
+  const complete = NODE_TYPES.every((node) => present.has(node.type));
   return (
     <aside className="palette palette-row" aria-label="Pipeline nodes">
-      <span className="muted small">Drag a node onto the canvas, then connect left to right:</span>
+      <span className="muted small">
+        {complete
+          ? "All steps are on the canvas (one of each). Click a step on the canvas to edit it."
+          : "Drag a missing step onto the canvas, then connect left to right:"}
+      </span>
       {NODE_TYPES.map((node) => {
         const Icon = ICONS[node.type];
         const used = present.has(node.type);

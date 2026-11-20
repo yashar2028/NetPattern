@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, not_found
 from app.core.errors import ApiError
 from app.db.session import get_db
+from app.models.model import Deployment
 from app.models.user import ApiKey, User
 from app.schemas.api import (
     ApiKeyCreate,
@@ -78,9 +79,24 @@ async def list_keys(user: User = Depends(get_current_user), db: AsyncSession = D
 async def create_key(
     body: ApiKeyCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> ApiKeyCreated:
+    if body.deployment_id:
+        deployment = await db.get(Deployment, body.deployment_id)
+        if deployment is None or deployment.owner_id != user.id:
+            raise not_found("Deployment")
+        if body.scope != "inference":
+            raise ApiError(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "invalid_scope",
+                "Only inference keys can be limited to a deployment",
+            )
     key = generate_api_key()
     row = ApiKey(
-        user_id=user.id, name=body.name, lookup=api_key_lookup(key), key_hash=hash_api_key(key)
+        user_id=user.id,
+        name=body.name,
+        lookup=api_key_lookup(key),
+        key_hash=hash_api_key(key),
+        scope=body.scope,
+        deployment_id=body.deployment_id,
     )
     db.add(row)
     await db.commit()

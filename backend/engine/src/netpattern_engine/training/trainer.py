@@ -194,7 +194,7 @@ class Trainer:
                     optimizer.zero_grad(set_to_none=True)
                     schedule.after_step()
 
-                running_loss += loss.detach().item()
+                running_loss += float(loss.detach())
                 seen_batches += 1
                 seen_samples += len(images)
                 now = time.monotonic()

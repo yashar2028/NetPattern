@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed, Loader2, Slash, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Loader2, PauseCircle, Slash, XCircle } from "lucide-react";
 
 const ICONS = {
   queued: CircleDashed,
@@ -6,6 +6,10 @@ const ICONS = {
   completed: CheckCircle2,
   failed: XCircle,
   cancelled: Slash,
+  // deployments
+  starting: Loader2,
+  active: CheckCircle2,
+  paused: PauseCircle,
 };
 
 /** Run status with an icon and a word, never color alone. */
@@ -13,7 +17,7 @@ export default function StatusBadge({ status }) {
   const Icon = ICONS[status] || CircleDashed;
   return (
     <span className={`badge badge-${status}`}>
-      <Icon size={14} aria-hidden="true" className={status === "running" ? "spin" : undefined} />
+      <Icon size={14} aria-hidden="true" className={status === "running" || status === "starting" ? "spin" : undefined} />
       {status}
     </span>
   );

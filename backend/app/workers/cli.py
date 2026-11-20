@@ -25,6 +25,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.job import FINISHED_STATUSES, Job
+from app.models.user import User
 from app.sandbox.environments import EnvironmentManager
 from app.sandbox.isolation import SandboxPolicy
 from app.sandbox.session import SessionClient, SessionError
@@ -274,6 +275,23 @@ async def cmd_session(args: argparse.Namespace) -> int:
         await client.close()
 
 
+async def cmd_account(args: argparse.Namespace) -> int:
+    """Show or change whether an account runs on a dedicated machine (PLAN §11.6)."""
+    async with AsyncSessionLocal() as db:
+        user = await db.scalar(select(User).where(User.email == args.email.strip().lower()))
+        if user is None:
+            print(f"no account with email {args.email}")
+            return 1
+        if args.dedicated or args.shared:
+            user.dedicated_worker = bool(args.dedicated)
+            await db.commit()
+        mode = "dedicated" if user.dedicated_worker else "shared"
+        print(f"{user.email}: {mode}")
+        if user.dedicated_worker:
+            print(f"  start its worker with WORKER_ACCOUNT={user.email}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.workers.cli",
@@ -289,7 +307,7 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument(
         "--kind", help="train, sanity, profile, prefetch, smoke, make_sample_dataset"
     )
-    submit.add_argument("--tier", help="hardware tier (cpu, gpu)")
+    submit.add_argument("--tier", help="hardware tier (see GET /v1/hardware-tiers)")
     submit.add_argument("--template", help="environment template")
     submit.add_argument("--packs", help="extra capability packs, comma-separated")
     submit.add_argument("--priority", type=int, default=0)
@@ -329,6 +347,15 @@ def build_parser() -> argparse.ArgumentParser:
     session.add_argument("--template", default=settings.DEFAULT_ENVIRONMENT_TEMPLATE)
     session.add_argument("--packs", default="")
     session.set_defaults(handler=cmd_session)
+
+    account = commands.add_parser(
+        "account", help="show or set an account's compute mode (shared or dedicated machine)"
+    )
+    account.add_argument("email")
+    mode = account.add_mutually_exclusive_group()
+    mode.add_argument("--dedicated", action="store_true", help="run only on its own worker")
+    mode.add_argument("--shared", action="store_true", help="run on the shared workers")
+    account.set_defaults(handler=cmd_account)
     return parser
 
 

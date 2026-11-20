@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netpattern-engine"
-version = "0.2.1"
+version = "0.6.0"
 description = "NetPattern training engine. Runs only inside Nix-pinned sandboxes."
 authors = [
     {name = "Yashar Najafi", email = "yasharnajafi2028@gmail.com"}
@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 medical = ["pydicom", "nibabel"]
 detection = ["pycocotools"]
+export = ["onnx"]
 
 [project.scripts]
 netpattern-runtime = "netpattern_engine.runtime:main"

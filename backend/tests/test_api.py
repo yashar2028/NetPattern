@@ -19,27 +19,12 @@ from app.db.session import AsyncSessionLocal
 from app.models.dataset import Dataset, DatasetVersion
 from app.models.job import Environment, Job, JobStatus
 from app.models.sandbox import Sandbox
-from app.models.user import User
 from app.services import storage
 from app.services.retention import purge_expired
 from app.services.uploads import sweep_stale_uploads
 from app.workers import queue
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def cleanup_test_users():
-    yield
-    async with AsyncSessionLocal() as db:
-        users = (
-            await db.execute(User.__table__.select().where(User.email.like("%@example.test")))
-        ).all()
-        for user in users:
-            shutil.rmtree(storage.datasets_root() / "users" / user.id, ignore_errors=True)
-            shutil.rmtree(storage.predict_inputs_root() / user.id, ignore_errors=True)
-        await db.execute(delete(User).where(User.email.like("%@example.test")))
-        await db.commit()
 
 
 def _zip(files: dict[str, bytes]) -> bytes:
@@ -583,9 +568,7 @@ async def test_data_of_active_runs_is_protected_and_reruns_check_their_data(clie
 
     blocked = await client.delete(dataset_url, headers=headers)
     async with AsyncSessionLocal() as db:  # the run finishes
-        await db.execute(
-            update(Job).where(Job.id == run["id"]).values(status=JobStatus.COMPLETED)
-        )
+        await db.execute(update(Job).where(Job.id == run["id"]).values(status=JobStatus.COMPLETED))
         await db.commit()
     deleted = await client.delete(dataset_url, headers=headers)
     rerun = await client.post(f"/v1/runs/{run['id']}/rerun", headers=headers)

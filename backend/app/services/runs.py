@@ -2,7 +2,7 @@
 
 In API specs a dataset node names a `dataset_version_id` (plus an optional `subpath`
 inside it) instead of a folder. Here those are checked for ownership and replaced
-by the folder the worker expects, so users can only ever reach their own data.
+by the folder the worker expects, so users can only reach data they own or share.
 The version ids are kept on the job, so the data a run used can be traced and
 protected from deletion while the run is queued or running.
 """
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.dataset import READY, Dataset, DatasetVersion
 from app.models.job import Job, JobStatus
 from app.models.user import User
-from app.services import storage
+from app.services import access, storage
 
 JOB_ID = re.compile(r"^job_[0-9a-f]{32}$")
 CHECKPOINT_NAMES = ("best", "last")
@@ -45,10 +45,10 @@ async def owned_dataset_version(db: AsyncSession, version_id: str, user: User) -
     if (
         version is None
         or dataset is None
-        or dataset.owner_id != user.id
         or version.status != READY
         or version.deleted_at is not None
         or dataset.deleted_at is not None
+        or not await access.can_use(db, user, dataset.owner_id, dataset.team_id)
     ):
         raise RunRequestError(f"dataset version '{version_id}' not found")
     return version

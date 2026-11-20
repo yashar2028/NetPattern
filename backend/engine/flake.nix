@@ -39,6 +39,8 @@
           nibabel
         ];
         detection = ps: with ps; [ pycocotools ];
+        # ONNX export of a model version (added to export jobs that ask for ONNX).
+        export = ps: with ps; [ onnx ];
       };
 
       # Templates are Python package sets from the same pinned nixpkgs revision.

@@ -465,6 +465,77 @@ def _backbone(p: BackboneParams, shape: Shape, pretrained: bool) -> nn.Module:
     return blocks.TimmBackbone(p.name, channels, p.pretrained and pretrained, p.output == "pooled")
 
 
+# --------------------------------------------------------------------------- code blocks
+
+# The worker sets this when the platform allows code blocks (PLAN §4.5: only with strong isolation
+# for external users). Without it the op refuses to run any code.
+ALLOW_CODE_ENV = "NETPATTERN_ALLOW_CODE"
+
+DEFAULT_CODE = """def build(in_shape):
+    # in_shape is the input without the batch: (channels, height, width) or (features,)
+    channels = in_shape[0]
+    return nn.Sequential(
+        nn.Conv2d(channels, channels, kernel_size=3, padding=1),
+        nn.ReLU(),
+    )
+"""
+
+
+class CustomParams(StrictModel):
+    code: str = Field(
+        default=DEFAULT_CODE,
+        min_length=1,
+        max_length=20_000,
+        description="Python that defines build(in_shape) -> nn.Module; torch, nn, F and math exist",
+        json_schema_extra={"format": "code"},
+    )
+
+
+class UserBlock(nn.Module):
+    """Wraps user code so its failures read as messages, not crashes."""
+
+    def __init__(self, inner: nn.Module) -> None:
+        super().__init__()
+        self.inner = inner
+
+    def forward(self, x: Any) -> Any:
+        try:
+            return self.inner(x)
+        except Exception as error:  # noqa: BLE001 - any user error becomes a node issue
+            raise RuntimeError(f"code block failed: {type(error).__name__}: {error}") from error
+
+
+@_register(
+    "Custom", "code", CustomParams, "Your own PyTorch code: build(in_shape) returns a module"
+)
+def _custom(p: CustomParams, shape: Shape, pretrained: bool) -> nn.Module:
+    import math
+    import os
+
+    import torch
+    from torch.nn import functional
+
+    if os.environ.get(ALLOW_CODE_ENV) != "1":
+        raise OpBuildError("code blocks are turned off on this platform")
+    namespace: dict[str, Any] = {"torch": torch, "nn": nn, "F": functional, "math": math}
+    try:
+        exec(compile(p.code, "<code block>", "exec"), namespace)  # noqa: S102 - runs in the sandbox
+    except SyntaxError as error:
+        raise OpBuildError(f"syntax error on line {error.lineno}: {error.msg}") from error
+    except Exception as error:  # noqa: BLE001
+        raise OpBuildError(f"{type(error).__name__} while running the code: {error}") from error
+    build = namespace.get("build")
+    if not callable(build):
+        raise OpBuildError("define a function build(in_shape) that returns an nn.Module")
+    try:
+        module = build(tuple(shape))
+    except Exception as error:  # noqa: BLE001
+        raise OpBuildError(f"build(in_shape) failed: {type(error).__name__}: {error}") from error
+    if not isinstance(module, nn.Module):
+        raise OpBuildError(f"build(in_shape) must return an nn.Module, not {type(module).__name__}")
+    return UserBlock(module)
+
+
 # --------------------------------------------------------------------------- helpers
 
 

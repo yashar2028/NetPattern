@@ -2,16 +2,16 @@
 
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, not_found
 from app.api.sandboxes import owned_sandbox
-from app.core.config import settings
 from app.core.errors import ApiError
 from app.db.session import get_db
 from app.models.user import User
+from app.services import worker
+from app.services.worker import worker_client
 
 router = APIRouter(prefix="/v1", tags=["editor"])
 
@@ -23,12 +23,6 @@ EDITOR_METHODS = {
     "list_zoo",
     "model_card",
 }
-# The first call may build the environment and start PyTorch.
-WORKER_TIMEOUT_SECONDS = 600
-
-
-def worker_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(base_url=settings.WORKER_INTERNAL_URL, timeout=WORKER_TIMEOUT_SECONDS)
 
 
 @router.post("/sandboxes/{sandbox_id}/session/{method}")
@@ -43,20 +37,13 @@ async def call_session(
     await owned_sandbox(db, sandbox_id, user)
     if method not in EDITOR_METHODS:
         raise not_found("Editor method")
-    try:
-        async with worker_client() as client:
-            response = await client.post(f"/sessions/{sandbox_id}/{method}", json=params)
-    except httpx.HTTPError as error:
-        raise ApiError(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "worker_unavailable",
-            "The sandbox worker is not reachable",
-            str(error) or type(error).__name__,
-        ) from error
-    body = response.json()
-    if response.status_code == 200:
-        return body["result"]
-    error = body.get("error", {})
+    account = user.id if user.dedicated_worker else None
+    _, url = await worker.pick(db, f"session:{sandbox_id}", account_id=account)
+    async with worker_client(url) as client:
+        ok, answer = await worker.post(client, f"/sessions/{sandbox_id}/{method}", params)
+    if ok:
+        return answer
+    error = answer
     issues = (error.get("data") or {}).get("issues")
     raise ApiError(
         status.HTTP_422_UNPROCESSABLE_CONTENT,

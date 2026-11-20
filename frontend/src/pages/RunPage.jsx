@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CircleStop, RotateCcw } from "lucide-react";
+import { Archive, CircleStop, Download, FileText, PackageOpen, RotateCcw } from "lucide-react";
 
 import { errorMessage } from "../api/client";
-import { cancelRun, getRun, rerun, streamRunEvents } from "../api/runsApi";
+import { listModels, registerModel } from "../api/modelsApi";
+import { cancelRun, getRun, reproduceBundle, rerun, runFile, runReport, streamRunEvents } from "../api/runsApi";
+import AuthImage from "../components/AuthImage";
 import LineChart from "../components/LineChart";
 import StatusBadge from "../components/StatusBadge";
 import { FINISHED_STATUSES } from "../constants";
+import { openBlob, saveBlob } from "../utils/download";
 import { formatCount, formatDate, formatMetric, formatSeconds } from "../utils/format";
 
 /** Everything the page shows while a run is live, rebuilt from its event log. */
 function summarize(events) {
-  const view = { phases: [], history: [], evaluation: {}, warnings: [], sanity: [] };
+  const view = { phases: [], history: [], evaluation: {}, warnings: [], sanity: [], lr: [] };
   for (const { type, data } of events) {
     switch (type) {
       case "phase":
@@ -37,6 +40,9 @@ function summarize(events) {
         break;
       case "sanity_step":
         view.sanity.push([data.step, data.loss]);
+        break;
+      case "lr_step":
+        view.lr.push([data.lr, data.loss]);
         break;
       case "warning":
         view.warnings.push(data.message);
@@ -243,6 +249,100 @@ function EvaluationView({ evaluation }) {
   );
 }
 
+function ErrorGallery({ runId, errors }) {
+  return (
+    <section className="section">
+      <h2>Misclassified {errors.split} samples</h2>
+      <p className="muted">
+        {errors.total_errors} of {errors.evaluated} wrong
+        {errors.samples.length < errors.total_errors ? `; the ${errors.samples.length} most confident mistakes:` : ":"}
+      </p>
+      {errors.samples.length > 0 && (
+        <div className="gallery">
+          {errors.samples.map((sample) => (
+            <figure key={sample.image} className="gallery-item" title={sample.source}>
+              <AuthImage runId={runId} path={sample.image} alt={`true ${sample.true}, predicted ${sample.predicted}`} />
+              <figcaption>
+                <span>
+                  true <strong>{sample.true}</strong>
+                </span>
+                <span className="error">
+                  predicted {sample.predicted} ({formatMetric(sample.score)})
+                </span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LrFinderView({ result, steps }) {
+  const points = result?.lrs ? result.lrs.map((lr, index) => [lr, result.losses[index]]) : steps;
+  return (
+    <section className="section">
+      <h2>Learning-rate finder</h2>
+      {result?.suggested_lr && (
+        <p>
+          Suggested learning rate: <strong>{result.suggested_lr.toExponential(1)}</strong> (where the loss falls
+          fastest). Set it in the Trainer node under optimizer → lr.
+        </p>
+      )}
+      {result && !result.suggested_lr && <p className="muted">No clear suggestion: the loss did not fall steadily.</p>}
+      {points.length > 0 && (
+        <figure className="panel chart-panel">
+          <figcaption>Smoothed loss by learning rate</figcaption>
+          <LineChart series={[{ name: "loss", data: points }]} xName="learning rate (log scale)" xLog label="Loss by learning rate" />
+        </figure>
+      )}
+    </section>
+  );
+}
+
+function ExportView({ runId, result }) {
+  const download = async (path) => saveBlob(await runFile(runId, path), path.split("/").pop());
+  return (
+    <section className="section">
+      <h2>Exported files</h2>
+      <table className="table compact">
+        <tbody>
+          {Object.entries(result.files || {}).map(([format, path]) => (
+            <tr key={format}>
+              <th scope="row">{format}</th>
+              <td>
+                <code>{path.split("/").pop()}</code>
+              </td>
+              <td>
+                <button type="button" className="link-button" onClick={() => download(path)}>
+                  <Download size={14} aria-hidden="true" className="inline-icon" /> Download
+                </button>
+              </td>
+            </tr>
+          ))}
+          {Object.entries(result.notes || {}).map(([format, note]) => (
+            <tr key={format}>
+              <th scope="row">{format}</th>
+              <td colSpan={2} className="muted small">
+                not exported: {note}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {result.input && (
+        <p className="muted small">
+          Input {result.input.shape.join(" × ")}
+          {result.input.normalized
+            ? `, pixels in [0, 1] normalized with mean ${result.input.mean.join(", ")} and std ${result.input.std.join(", ")}`
+            : ", pixels in [0, 1]"}
+          . Classes: {(result.task?.classes || []).join(", ") || "—"}.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function SanityView({ result, steps }) {
   const losses = result?.losses ? result.losses.map((loss, index) => [index + 1, loss]) : steps;
   return (
@@ -297,6 +397,54 @@ function ProfileView({ profile }) {
         <pre className="code-block">{JSON.stringify(profile, null, 2)}</pre>
       </details>
     </section>
+  );
+}
+
+function RegisterModel({ runId }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [models, setModels] = useState([]);
+  const [target, setTarget] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+
+  const show = () => {
+    setOpen(true);
+    listModels().then(setModels).catch(() => {});
+  };
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      await registerModel(target ? { run_id: runId, model_id: target } : { run_id: runId, name });
+      navigate("/models");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="button" onClick={show}>
+        <Archive size={16} aria-hidden="true" /> Register as model
+      </button>
+    );
+  }
+  return (
+    <form className="inline-form compact" onSubmit={submit}>
+      <select aria-label="Model" value={target} onChange={(event) => setTarget(event.target.value)}>
+        <option value="">new model…</option>
+        {models.map((model) => (
+          <option key={model.id} value={model.id}>
+            new version of {model.name}
+          </option>
+        ))}
+      </select>
+      {!target && <input aria-label="Model name" required placeholder="model name" value={name} onChange={(e) => setName(e.target.value)} />}
+      <button type="submit" className="button primary">
+        Register
+      </button>
+      {error && <span className="error small">{error}</span>}
+    </form>
   );
 }
 
@@ -371,6 +519,22 @@ function RunView({ runId }) {
           {!finished && (
             <button type="button" className="button ghost" onClick={() => act(async () => setRun(await cancelRun(runId)))}>
               <CircleStop size={16} aria-hidden="true" /> Cancel
+            </button>
+          )}
+          {run.kind === "train" && run.status === "completed" && <RegisterModel runId={run.id} />}
+          {run.kind === "train" && run.status === "completed" && (
+            <button type="button" className="button ghost" onClick={() => act(async () => openBlob(await runReport(run.id)))}>
+              <FileText size={16} aria-hidden="true" /> Report
+            </button>
+          )}
+          {finished && run.environment_id && (
+            <button
+              type="button"
+              className="button ghost"
+              title="Download everything needed to rerun this job on any machine with Nix"
+              onClick={() => act(async () => saveBlob(await reproduceBundle(run.id), `${run.id}-reproduce.zip`))}
+            >
+              <PackageOpen size={16} aria-hidden="true" /> Reproduce locally
             </button>
           )}
           {finished && (
@@ -453,7 +617,10 @@ function RunView({ runId }) {
 
       {run.kind === "train" && history.length > 0 && <TrainingView history={history} monitor={result.training?.monitor} bestEpoch={result.training?.best_epoch ?? history.findLast((e) => e.best)?.epoch} />}
       {run.kind === "train" && Object.keys(evaluation).length > 0 && <EvaluationView evaluation={evaluation} />}
+      {run.kind === "train" && result.errors && <ErrorGallery runId={run.id} errors={result.errors} />}
       {run.kind === "sanity" && <SanityView result={run.result} steps={view.sanity} />}
+      {run.kind === "lr_find" && <LrFinderView result={run.result} steps={view.lr} />}
+      {run.kind === "export" && run.result?.files && <ExportView runId={run.id} result={run.result} />}
       {run.kind === "profile" && result.profile && <ProfileView profile={result.profile} />}
 
       {finished && run.result && (

@@ -173,7 +173,10 @@ export function ModelForm({ params, onChange, sandboxId, taskType, onOpenLayers 
       onChange={setArchitecture}
       sandboxId={sandboxId}
       taskType={taskType}
+      onShowLayers={onOpenLayers}
       onCustom={() => {
+        const name = architecture.base?.name || "the zoo model";
+        if (!window.confirm(`Replace ${name} with an empty network that you build layer by layer?`)) return;
         setArchitecture({ kind: "graph", input: { shape: [3, 64, 64] }, nodes: [], edges: [] });
         onOpenLayers();
       }}
@@ -181,7 +184,7 @@ export function ModelForm({ params, onChange, sandboxId, taskType, onOpenLayers 
   );
 }
 
-function ZooModelForm({ architecture, onChange, sandboxId, taskType, onCustom }) {
+function ZooModelForm({ architecture, onChange, sandboxId, taskType, onShowLayers, onCustom }) {
   const base = architecture.base || { source: "torchvision", name: "", weights: "DEFAULT" };
   const patches = architecture.patches || [];
   const frozen = patches.some((p) => p.op === "freeze" && p.targets?.includes("@backbone"));
@@ -223,6 +226,11 @@ function ZooModelForm({ architecture, onChange, sandboxId, taskType, onCustom })
           {selected.metrics?.["acc@1"] ? ` · ${selected.trained_on} top-1 ${selected.metrics["acc@1"]}%` : ""}
           {selected.license ? ` · license ${selected.license}` : ""}
         </p>
+      )}
+      {base.name && (
+        <button type="button" className="button" onClick={onShowLayers}>
+          <Layers size={16} aria-hidden="true" /> Show layers (read-only)
+        </button>
       )}
       {base.source === "netpattern" && (
         <label className="field">

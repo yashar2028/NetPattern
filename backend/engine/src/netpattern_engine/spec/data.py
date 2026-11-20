@@ -53,6 +53,16 @@ class SplitSpec(StrictModel):
     val: float = Field(default=0.15, ge=0, le=1)
     test: float = Field(default=0.15, ge=0, le=1)
     seed: int = 42
+    # k-fold cross-validation: with `folds` set, fold number `fold` (0-based) is the test split
+    # and `test` is ignored; train and val share the rest in their ratio. One run per fold.
+    folds: int | None = Field(default=None, ge=2, le=20)
+    fold: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _fold_in_range(self) -> "SplitSpec":
+        if self.folds is not None and self.fold >= self.folds:
+            raise ValueError(f"fold must be below folds ({self.folds}), got {self.fold}")
+        return self
 
     @model_validator(mode="after")
     def _fractions_sum_to_one(self) -> "SplitSpec":

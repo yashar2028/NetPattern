@@ -1,0 +1,33 @@
+name: Bug
+description: Something does not work as expected
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: For example `./docker_run.sh logs backend worker`.
+      render: text
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [backend, worker / sandbox, engine, frontend, devops]
+    validations:
+      required: true
