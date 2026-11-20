@@ -60,7 +60,8 @@ export default function ModelsPage() {
         </div>
       </header>
       {error && <p className="error" role="alert">{error}</p>}
-      {models?.length === 0 && <p className="muted">No models yet. Open a completed training run and press “Register as model”.</p>}
+      {models === null && !error && <p className="muted">Loading models…</p>}
+      {models?.length === 0 && <div className="empty-state"><Rocket size={24} aria-hidden="true" /><strong>No registered models yet</strong><p>After training, open a completed run and select “Register as model”.</p><Link className="button" to="/sandboxes">Go to sandboxes</Link></div>}
       {models?.map((model) => (
         <section key={model.id} className="section panel">
           <h2>{model.name}</h2>

@@ -23,8 +23,10 @@ export default function DeploymentsPage() {
         </div>
       </header>
       {error && <p className="error" role="alert">{error}</p>}
-      {deployments?.length === 0 && <p className="muted">No deployments yet.</p>}
+      {deployments === null && !error && <p className="muted">Loading deployments…</p>}
+      {deployments?.length === 0 && <div className="empty-state"><strong>No deployments yet</strong><p>Deploy a registered model to make it available through the API.</p><Link className="button" to="/models">Explore models</Link></div>}
       {deployments?.length > 0 && (
+        <div className="table-scroll">
         <table className="table">
           <thead>
             <tr>
@@ -49,6 +51,7 @@ export default function DeploymentsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

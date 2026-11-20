@@ -18,6 +18,19 @@ save. Restart the worker after changing `backend/app/workers` or `backend/app/sa
 - `dev` is merged into `main` through a pull request when it is releasable. `main` is always
   deployable.
 
+## Frontend design baseline
+
+The UI imported from `feature/frontend_base_changes` (`e2950bb`) is the design baseline.
+Do not overwrite or redesign it in unrelated changes or conflict resolutions. If a change
+needs to alter the baseline, call it out in the pull request and get explicit approval.
+Otherwise, match the baseline and focus on screens and components it did not change.
+
+The baseline covers the shared theme (`frontend/src/design.css`, `frontend/src/index.css`),
+the app shell (`App.jsx`, `AppLayout.jsx`, `PublicLayout.jsx`), the Home, Auth, Sandboxes,
+Sandbox, Datasets, Models, Deployments, API Keys and Teams pages, and the sandbox creation
+flow in `frontend/src/features/pipeline/createProject.js`. Shared style changes can affect
+these screens even when their page files are untouched.
+
 ## Read first
 
 - [docs/architecture.md](docs/architecture.md): components, flows, data model, conventions

@@ -121,7 +121,8 @@ export default function TeamsPage() {
         </button>
       </form>
       {error && <p className="error" role="alert">{error}</p>}
-      {teams?.length === 0 && <p className="muted">No teams yet.</p>}
+      {teams === null && !error && <p className="muted">Loading teams…</p>}
+      {teams?.length === 0 && <div className="empty-state"><Users size={24} aria-hidden="true" /><strong>No teams yet</strong><p>Create a team above to share datasets and sandboxes with colleagues.</p></div>}
       {teams?.map((team) => (
         <TeamCard key={team.id} team={team} me={user} onChange={load} />
       ))}

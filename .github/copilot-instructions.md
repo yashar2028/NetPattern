@@ -21,6 +21,9 @@ When reviewing, check these project rules first:
   (`app/services/access.py`). API keys respect their scopes and restrictions.
 - **Tests.** Every feature or fix has a test. Tests that need PostgreSQL are marked
   `pytest.mark.integration`.
+- **Frontend design baseline.** Follow the protected UI scope in
+  [CONTRIBUTING.md](../CONTRIBUTING.md#frontend-design-baseline). Flag unrelated changes
+  that overwrite it; focus redesign work on screens and components outside that scope.
 - **Style** is enforced by black, isort, flake8 (line length 100) and ESLint; do not comment on
   formatting those tools already handle.
 

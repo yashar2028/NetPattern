@@ -1,4 +1,6 @@
-import { Activity, Boxes, FlaskConical, Lock, Network, Send } from "lucide-react";
+import { Activity, ArrowRight, Boxes, FlaskConical, Lock, Network, Send } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const steps = [
   {
@@ -37,18 +39,26 @@ const sandboxPoints = [
 ];
 
 export default function HomePage() {
+  const { user } = useAuth();
   return (
     <div className="home">
       <section className="hero">
-        <p className="eyebrow">CNNs for imaging, without the boilerplate</p>
-        <h1>Build, train, evaluate and serve CNNs visually.</h1>
+        <p className="eyebrow">A workspace for imaging AI</p>
+        <h1>From images to insights, <span>all in one place.</span></h1>
         <p className="lede">
-          Bring your images (PNG, JPEG, DICOM or NIfTI), shape a network on the canvas, and track
-          every run in a reproducible sandbox.
+          Build, train and evaluate image models visually. Keep your experiments organized and
+          bring your best models into your applications.
         </p>
+        <div className="hero-actions">
+          <Link className="button primary" to={user ? "/sandboxes" : "/auth?mode=register"}>{user ? "Open your workspace" : "Get started"} <ArrowRight size={17} aria-hidden="true" /></Link>
+          <a className="button" href="#how-it-works">See how it works</a>
+        </div>
+        <p className="muted small">Supports PNG, JPEG, DICOM and NIfTI images.</p>
       </section>
 
-      <section className="card-grid" aria-label="Workflow">
+      <section id="how-it-works" className="section">
+        <div className="section-heading"><div><p className="eyebrow">Your workflow</p><h2>Everything you need to move forward</h2><p className="muted">From the first experiment to a model you can use.</p></div></div>
+        <div className="card-grid" aria-label="Workflow">
         {steps.map(({ icon: Icon, title, text }) => (
           <article key={title} className="card">
             <Icon className="card-icon" size={22} aria-hidden="true" />
@@ -56,6 +66,7 @@ export default function HomePage() {
             <p>{text}</p>
           </article>
         ))}
+        </div>
       </section>
 
       <section className="sandbox-band" aria-label="Sandboxes">
