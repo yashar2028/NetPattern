@@ -14,6 +14,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    agreement_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    agreement_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Dedicated machine (PLAN §11.6): the account's jobs run only on its own worker
     # (WORKER_ACCOUNT); shared workers skip them.
     dedicated_worker: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())

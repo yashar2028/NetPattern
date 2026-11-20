@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, not_found
+from app.core.agreements import AGREEMENT_VERSION, PRIVACY_TEXT, TERMS_TEXT
 from app.core.errors import ApiError
 from app.db.session import get_db
 from app.models.model import Deployment
@@ -32,12 +33,22 @@ from app.services.security import (
 router = APIRouter(prefix="/v1", tags=["auth"])
 
 
+@router.get("/auth/agreement")
+async def agreement() -> dict[str, str]:
+    return {"version": AGREEMENT_VERSION, "terms": TERMS_TEXT, "privacy": PRIVACY_TEXT}
+
+
 @router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> AuthResponse:
     if await db.scalar(select(User.id).where(User.email == body.email)):
         raise ApiError(status.HTTP_409_CONFLICT, "email_taken", "A user with this email exists")
     user = User(
-        email=body.email, password_hash=hash_password(body.password), full_name=body.full_name
+        email=body.email,
+        password_hash=hash_password(body.password),
+        full_name=body.full_name,
+        purpose=body.purpose,
+        agreement_version=body.agreement_version,
+        agreement_accepted_at=datetime.now(UTC),
     )
     db.add(user)
     await db.commit()
